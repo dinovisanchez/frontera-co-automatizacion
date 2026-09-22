@@ -17,7 +17,7 @@ arquitectura Python modular, desplegable en Vercel. Dos motores:
 | Prompt de extracción de actas (verbatim) | ✅ `core/prompts/acta_extraction_prompt.py` |
 | `acta_analyzer` / `alcance_combiner` (CAPEX) | ✅ |
 | `clasificador_medida` — tipo de medida + reglas 9a/9b/9c/9d | ✅ |
-| Propuesta de equipos concreta (SKUs de TC/TP/medidor) | ⏳ Siguiente incremento — depende de `ref_capex` y `Normalizaciones_Indirectas`, fuera del alcance confirmado inicial |
+| Propuesta de equipos concreta (SKUs de TC/TP/medidor/bloque/celda/cable) | ✅ `propuesta_equipos.py` + módulos de apoyo (ver abajo) |
 | `tarifa_calculator` / `opex_desde_equipos` (OPEX) | ✅ |
 | `operator_resolver` — hoja "Data" | ✅ |
 | `operator_resolver` — fallback leyendo la acta más reciente | ✅ |
@@ -67,6 +67,40 @@ como exclusión las distingue). Ver `tests/test_tarifa_calculator.py` y
 intentar convertir ese texto a `float`. `leer_todo`/`leer_rango` ahora aceptan
 `sin_formato=True` (UNFORMATTED_VALUE) para columnas numéricas.
 
+## Motor de propuesta de equipos (CAPEX) — 3 hojas externas + catálogo
+
+`propuesta_equipos.py` es el puerto de `construirPropuestaEquipos` (Codigo.gs, 713 líneas) —
+a partir del diagnóstico de `clasificador_medida` + el veredicto de Lovable, decide qué SKU de
+`ref_capex` proponer para TC/TP/medidor/bloque de pruebas/celda/cable. Depende de 3 hojas
+externas, todas **confirmadas visualmente** contra la hoja real el 2026-09-22 (no solo contra
+comentarios del código):
+
+| Hoja | Dónde vive | Para qué sirve |
+|---|---|---|
+| "Data cambio NT" | Libro `NTCAMBIO_SHEET_ID`, gid `1941841015` | CO ya pasó cambio de Nivel de Tensión (Art.19) — SKU ya calculado a mano por ingeniería |
+| "Normalizaciones_Indirectas" | Mismo libro, gid `821330837` | Relación de TC/TP + cantidad ya calculada, prioridad sobre "Data cambio NT" |
+| "BD_Telemedida" (hoja maestra) | Libro `CONTROL_SHEET_ID`, gid `655267373` | Única con una fila por CADA CO — sirve cuando no hay ninguna acta disponible (medida, conexión, Factor Fx, capacidad) |
+
+**Bug real corregido en `hojas_ingenieria.py`**: la columna "Propiedad de Activos" de la hoja
+maestra casi nunca dice literalmente "Exclusivo"/"Compartido" — los valores reales son **"OR"**
+(activo del operador de red → compartido) y **"Usuario"** (activo del cliente → exclusivo). El
+original solo buscaba las palabras "exclusiv"/"compartid" como substring, así que para la
+inmensa mayoría de filas esto quedaba en `null` sin que nadie lo notara — confirmado en vivo
+con CO0200002425 (Lovable mostraba el uso correcto, el diagnóstico automático no).
+
+**2 bugs preexistentes encontrados y documentados con test (no corregidos — son del original,
+requieren tu decisión)**:
+- `parsear_medidor`: `\bC2000\b`/`\bD2000\b` nunca hacen match contra SKUs reales como
+  `"C2000Cor5 (100) AT"` (no hay borde de palabra entre "2000" y "Cor5"). Ver
+  `test_parsear_medidor_bug_preexistente_c2000_pegado_al_sufijo`.
+- `parsear_tp`: el símbolo "√3" dobla un dígito real dentro del primario (`"13200√3"` →
+  `132003` en vez de `13200`), así que `buscarCandidatosTP` nunca encuentra estos ítems reales
+  del catálogo. Ver `test_parsear_tp_bug_preexistente_raiz_3_corrompe_el_primario`.
+
+El caso real **CO0200002425** (semidirecta, transformador compartido, TC sin certificado →
+condición: cambiarlo) quedó como test de integración en `test_propuesta_equipos.py`,
+reproduciendo exactamente el SKU/precio que se validó a mano con Dinovi.
+
 ## Estructura
 
 ```
@@ -92,6 +126,16 @@ intentar convertir ese texto a `float`. `leer_todo`/`leer_rango` ahora aceptan
     acta_analyzer.py               → CAPEX: UNA acta -> 14 campos (módulo puro)
     alcance_combiner.py             → CAPEX: combina actas de un CO, una por invocación
     clasificador_medida.py           → CAPEX: tipo de medida + reglas de dominio
+    catalogo_capex.py                 → CAPEX: parseo de SKUs de ref_capex (TC/TP/medidor)
+    tablas_creg.py                     → CAPEX: tablas oficiales CREG 038/2014 para TC (semidirecta/indirecta)
+    hojas_ingenieria.py                 → CAPEX: Data cambio NT / Normalizaciones_Indirectas / hoja maestra
+    deteccion_equipos.py                 → CAPEX: qué hay instalado (Metabase) + qué secciones están deficientes
+    resolucion_tc_tp.py                   → CAPEX: candidatos de TC/TP/medidor/celda + reglas por OR (EPM, EMCALI, Air-e)
+    propuesta_equipos.py                   → CAPEX: orquestador (puerto de construirPropuestaEquipos)
+    propuesta_equipos_contexto.py           → CAPEX: arma el contexto compartido por los resolutores
+    propuesta_tc.py / propuesta_tc_calculo.py → CAPEX: resolución de TC (la rama más compleja)
+    propuesta_tp_medidor.py                   → CAPEX: resolución de TP y Medidor
+    propuesta_bloque_celda_cable.py             → CAPEX: resolución de Bloque de pruebas, Celda y Cable
     tarifa_calculator.py              → OPEX: normalización + matcher por palabras clave contra ref_tarifario
     opex_desde_equipos.py             → OPEX: maniobras por tipo de medida × ubicación (verificado contra la hoja real)
     operator_resolver.py              → OPEX: hoja "Data" -> acta más reciente -> manual

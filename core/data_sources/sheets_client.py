@@ -28,6 +28,7 @@ class SheetsClient:
         creds = Credentials.from_service_account_info(info, scopes=_SCOPES)
         self._gc = gspread.authorize(creds)
         self._spreadsheet = self._gc.open_by_key(cfg.alcance_sheet_id)
+        self._otras_hojas_cache: dict[str, gspread.Spreadsheet] = {}
 
     def hoja_por_nombre(self, nombre: str) -> gspread.Worksheet:
         try:
@@ -43,6 +44,25 @@ class SheetsClient:
             if hoja.id == gid:
                 return hoja
         raise RuntimeError(f"No encontré ninguna hoja con gid {gid} en la hoja de Alcances.")
+
+    def hoja_externa_por_gid(self, spreadsheet_id: str, gid: int) -> gspread.Worksheet | None:
+        """Como hoja_por_gid, pero en OTRA hoja de cálculo (ej. "Data cambio NT", la hoja
+        maestra) — la misma cuenta de servicio debe tener acceso de lectura compartido ahí.
+        Devuelve None (no lanza) si la hoja no existe o no está compartida — igual que
+        obtenerHojaAlcancePorGid en Codigo.gs, para no tumbar el resto del análisis.
+        """
+        if spreadsheet_id not in self._otras_hojas_cache:
+            try:
+                self._otras_hojas_cache[spreadsheet_id] = self._gc.open_by_key(spreadsheet_id)
+            except (gspread.SpreadsheetNotFound, gspread.exceptions.APIError):
+                # No existe, o la cuenta de servicio no tiene acceso compartido ahí — no debe
+                # tumbar el resto del análisis (igual que el try/catch del original).
+                return None
+        spreadsheet = self._otras_hojas_cache[spreadsheet_id]
+        for hoja in spreadsheet.worksheets():
+            if hoja.id == gid:
+                return hoja
+        return None
 
     def leer_todo(self, hoja: gspread.Worksheet, sin_formato: bool = False) -> list[list[Any]]:
         """Equivalente a hoja.getRange(1,1,ultimaFila,ultimaColumna).getValues().

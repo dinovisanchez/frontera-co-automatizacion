@@ -76,3 +76,21 @@ SHEET_REF_CAPEX = "ref_capex"
 # pestaña por gid, no por nombre, para no depender de que alguien no la renombre.
 GID_HOJA_ORIGEN = 1682501029
 FILA_INICIO_HOJA_ORIGEN = 4
+
+# 3 hojas de cálculo EXTERNAS (no ALCANCE_SHEET_ID) confirmadas visualmente el 2026-09-22 —
+# construirPropuestaEquipos las necesita para el catálogo de TC/TP/celda/medidor ya calculado
+# por ingeniería y para tener datos cuando no hay ninguna acta disponible.
+
+# Libro "Quinquenales | Indirectas - Art.19" — pestañas "Data cambio NT" y
+# "Normalizaciones_Indirectas". Confirmado: para COs que ya pasaron por cambio de Nivel de
+# Tensión (Art.19), traen el SKU/relación ya calculados a mano por ingeniería — más confiable
+# que recalcular desde las tablas CREG para esos casos puntuales.
+NTCAMBIO_SHEET_ID = "1N_XozuqiczBvGnoPzzm-_w7ijU3vqnG2uRSjcq9yozY"
+NTCAMBIO_GID = 1941841015
+NORMINDIRECTAS_GID = 821330837
+
+# Libro "Copia de BD_Telemedida" (hoja maestra), pestaña "BD_Telemedida" — a diferencia de las
+# dos anteriores (solo casos puntuales), esta tiene una fila por CADA CO, así que es la única
+# que sirve cuando no hay ninguna acta disponible.
+CONTROL_SHEET_ID = "13EDCBENSRxZtNM3BhbKB9ghHejZKCWa3lcWfoWZV05A"
+MAESTRO_GID = 655267373

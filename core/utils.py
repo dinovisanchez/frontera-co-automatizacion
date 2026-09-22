@@ -19,3 +19,9 @@ def quitar_acentos(s: str | None) -> str:
     if not s:
         return ""
     return "".join(c for c in unicodedata.normalize("NFD", str(s)) if not unicodedata.combining(c))
+
+
+def normText(s: str | None) -> str:
+    """Puerto de normText (Codigo.gs línea 1708-1710): minúsculas, sin acentos, con un espacio
+    de relleno a cada lado — usado para matches por substring de palabra completa."""
+    return " " + quitar_acentos((s or "").lower()) + " "
