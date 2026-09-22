@@ -32,7 +32,11 @@ def _leer_fila_por_co_en_hoja(sheets: SheetsClient, spreadsheet_id: str, gid: in
     datos = sheets.leer_todo(hoja, sin_formato=True)
     if len(datos) < 2:
         return None
-    header = [quitar_acentos(str(h or "").lower().strip()) for h in datos[0]]
+    # Algunos encabezados reales traen saltos de línea internos (ej. "Factor \nFx",
+    # "Fecha \nIngreso\n(mm/dd/aa)") — .strip() solo saca los de los extremos, así que sin
+    # colapsar los internos a un espacio, _col_por_nombre nunca encontraba esas columnas
+    # (bug real confirmado 2026-09-22 con CO0200001836: "Factor Fx" siempre salía null).
+    header = [re.sub(r"\s+", " ", quitar_acentos(str(h or "").lower())).strip() for h in datos[0]]
     for fila in datos[1:]:
         if fila and normalizar_codigo(fila[0]) == co:
             return {"header": header, "fila": fila}
