@@ -6,7 +6,9 @@ pyproject.toml). Por eso cada archivo de api/ expone un Blueprint en vez de
 su propia app, y este archivo los registra todos aquí.
 """
 
-from flask import Flask, jsonify
+from pathlib import Path
+
+from flask import Flask, Response
 
 from api.actas_start import bp as actas_start_bp
 from api.actas_status import bp as actas_status_bp
@@ -23,19 +25,12 @@ app.register_blueprint(opex_resolver_bp)
 app.register_blueprint(cron_reintentos_bp)
 app.register_blueprint(analizar_alcance_bp)
 
+_FRONTEND_HTML = (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
+
 
 @app.get("/")
-def estado():
-    """No es un frontend, solo evita el 404 confuso al abrir la raíz en el navegador."""
-    return jsonify({
-        "estado": "ok",
-        "servicio": "Frontera CO - Automatización (CAPEX/OPEX)",
-        "endpoints": [
-            "POST /api/actas_start",
-            "POST /api/actas_step",
-            "GET /api/actas_status?co=...",
-            "POST /api/analizar_alcance",
-            "POST /api/opex_resolver",
-            "GET /api/cron_reintentos",
-        ],
-    })
+def frontend():
+    """Frontend de "Alcance Quinquenal" — portado de Index.html (Apps Script). Solo esta
+    pestaña tiene backend Python: las otras 3 del original (Alcances/HV/Diagrama Unifilar)
+    no se migraron todavía."""
+    return Response(_FRONTEND_HTML, mimetype="text/html")

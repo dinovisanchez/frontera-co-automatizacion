@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Frontera CO — Alcance Quinquenal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #171717;
+      --bg-weak: #1e1e1e;
+      --bg-input: #141414;
+      --border: #262626;
+      --border-soft: rgba(255,255,255,.08);
+      --text: #ffffff;
+      --text-sub: #a3a3a3;
+      --text-faint: #6b6b6b;
+      --accent: #22c55e;
+      --accent-soft: rgba(34,197,94,.14);
+      --accent-ring: rgba(34,197,94,.35);
+      --amber: #f5a524;
+      --red: #f87171;
+      --red-soft: rgba(248,113,113,.1);
+      --radius-lg: 12px;
+      --radius-md: 10px;
+      --radius-sm: 7px;
+    }
+    * { box-sizing: border-box; }
+    html, body { background: var(--bg); color: var(--text); }
+    body {
+      font-family: 'Inter', -apple-system, Segoe UI, Arial, sans-serif;
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 36px 20px 60px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+    .brand-mark {
+      width: 30px; height: 30px; border-radius: 8px;
+      background: #0d0d0d; border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--accent); flex-shrink: 0;
+    }
+    .brand-name { font-size: 13px; color: var(--text-sub); font-weight: 500; letter-spacing: .01em; }
+
+    h1 { font-size: 24px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01em; }
+    .subtitle { color: var(--text-sub); font-size: 13.5px; line-height: 1.55; margin: 0 0 24px; max-width: 62ch; }
+
+    .card {
+      border: 1px solid var(--border); border-radius: var(--radius-md);
+      background: rgba(255,255,255,.012); padding: 18px 16px;
+    }
+    .card-title { font-size: 14.5px; font-weight: 600; margin-bottom: 4px; }
+    .card-desc { font-size: 12.5px; color: var(--text-sub); line-height: 1.5; margin-bottom: 14px; }
+
+    label { display: block; margin-top: 12px; font-weight: 600; font-size: 11.5px; color: var(--text-sub); text-transform: uppercase; letter-spacing: .04em; }
+    label:first-child { margin-top: 0; }
+
+    input, select, textarea {
+      width: 100%; padding: 10px 11px; font-size: 14px; margin-top: 6px;
+      background: var(--bg-input); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text); font-family: inherit;
+    }
+    input::placeholder, textarea::placeholder { color: var(--text-faint); }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+    button {
+      margin-top: 16px; padding: 10px 18px; font-size: 13.5px; font-weight: 600;
+      cursor: pointer; border: none; border-radius: var(--radius-sm);
+      background: var(--accent); color: #06210f;
+      transition: filter .15s ease, transform .05s ease;
+    }
+    button:hover:not(:disabled) { filter: brightness(1.08); }
+    button:active:not(:disabled) { transform: translateY(1px); }
+    button:disabled { background: #2e3b33; color: #6b7970; cursor: default; }
+    button.secondary-btn { background: none; border: 1px solid var(--accent); color: var(--accent); width: auto; }
+    button.secondary-btn:disabled { border-color: var(--border); color: var(--text-faint); }
+    button.copy-btn {
+      width: auto; margin-top: 8px; padding: 5px 11px; font-size: 12px;
+      background: none; border: 1px solid var(--border-soft); color: var(--text-sub);
+    }
+    button.copy-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); filter: none; }
+
+    .spinner { display: none; margin-top: 10px; font-size: 12.5px; color: var(--text-sub); }
+    .spinner.active { display: flex; align-items: center; gap: 8px; }
+    .spinner.active::before {
+      content: ''; width: 12px; height: 12px; border-radius: 50%;
+      border: 2px solid var(--border); border-top-color: var(--accent);
+      animation: spin .7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .result { margin-top: 16px; font-size: 13px; }
+    .result .line { padding: 4px 0; color: var(--text-sub); }
+    .result a { color: var(--accent); text-decoration: none; }
+    .result a:hover { text-decoration: underline; }
+
+    .subsection { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-soft); }
+    .subsection h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-sub); margin: 0 0 8px 0; font-weight: 700; }
+    .item { font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--border-soft); color: var(--text-sub); }
+    .item:last-child { border-bottom: none; }
+    .ok { color: var(--accent); }
+    .warn { color: var(--amber); }
+    .subsection h3.warn { color: var(--amber); }
+    .item.warn { color: #e0b567; }
+
+    .error-box {
+      background: var(--red-soft); border: 1px solid rgba(248,113,113,.3);
+      color: var(--red); padding: 11px 13px; border-radius: var(--radius-sm); font-size: 13px;
+    }
+    .req-note { font-size: 11.5px; color: var(--text-faint); margin: 14px 0 0; padding-top: 12px; border-top: 1px dashed var(--border-soft); }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .checkbox-line { margin-top: 6px; text-transform: none; font-weight: 400; font-size: 12.5px; display: flex; align-items: center; gap: 6px; color: var(--text-sub); }
+    .checkbox-line input { width: auto; margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="brand">
+    <div class="brand-mark">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 11-14h-7l1-6z"/></svg>
+    </div>
+    <span class="brand-name">BIA · Fronteras Comerciales</span>
+  </div>
+
+  <h1>Frontera CO — Alcance Quinquenal</h1>
+  <p class="subtitle">Escribe uno o varios códigos CO (separados por coma, espacio o salto de línea). Por cada uno se leen sus actas, se aplica la norma (CREG 038/2014 + NTC 5019) y se propone el SKU de TC/TP/Medidor/Celda/Bloque de pruebas que falte. Nada se guarda solo — copias las filas y las pegas tú en las hojas correspondientes.</p>
+
+  <div class="card">
+    <div class="card-title">Alcance Provisional Quinquenales</div>
+    <label for="cosAlcance">Códigos CO</label>
+    <textarea id="cosAlcance" rows="3" placeholder="CO0800004954, CO0400005205..."></textarea>
+
+    <div class="toolbar">
+      <button id="btnAnalizarAlcance">Analizar</button>
+      <button id="btnAnalizarTodos" class="secondary-btn">Analizar todos</button>
+      <button id="btnReintentarFallidos" class="secondary-btn" style="display:none;">Reintentar fallidos</button>
+      <button id="btnColapsarTodas" class="secondary-btn">− Minimizar todas</button>
+      <button id="btnExpandirTodas" class="secondary-btn">+ Expandir todas</button>
+    </div>
+    <div id="resumenAnalisisTodos" style="margin-top:8px;font-size:13px;color:var(--text-sub);"></div>
+    <p class="req-note">"Analizar" arma una tarjeta por cada CO para que elijas la clasificación (según lo que veas en tu herramienta de diagnóstico). "Analizar todos" corre el análisis de todas las tarjetas ya armadas, una por una.</p>
+  </div>
+
+  <div id="resultadosAlcance"></div>
+
+  <script>
+    // ---------- Utilidades básicas ----------
+    function escapeHtml(s) {
+      return (s || '').toString().replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function setRunning(btnId, spinnerId, running) {
+      var btn = document.getElementById(btnId), sp = document.getElementById(spinnerId);
+      if (btn) btn.disabled = running;
+      if (sp) sp.className = running ? 'spinner active' : 'spinner';
+    }
+    function renderError(err) {
+      return '<div class="error-box">' + escapeHtml((err && err.message) || err) + '</div>';
+    }
+    function copiarTexto(texto, btn) {
+      navigator.clipboard.writeText(texto).then(function () {
+        var original = btn.textContent;
+        btn.textContent = '✓ Copiado';
+        setTimeout(function () { btn.textContent = original; }, 1500);
+      }).catch(function () {
+        alert('No se pudo copiar automáticamente — selecciona el texto a mano.');
+      });
+    }
+    function formatoPesos(n) {
+      return '$' + Math.round(n || 0).toLocaleString('es-CO');
+    }
+
+    /** Llama a un endpoint JSON del backend y lanza Error(mensaje) si algo sale mal. */
+    async function fetchJSON(method, url, body) {
+      var opts = { method: method, headers: {} };
+      if (body !== undefined) {
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(body);
+      }
+      var res = await fetch(url, opts);
+      var data = null;
+      try { data = await res.json(); } catch (e) { /* respuesta sin cuerpo JSON */ }
+      if (!res.ok) {
+        throw new Error((data && data.error) ? data.error : ('HTTP ' + res.status));
+      }
+      return data;
+    }
+
+    // ---------- Motor de actas: /api/actas_start + /api/actas_step hasta completo ----------
+    function jobCompleto(e) { return !!e && (e.completo === true || e.estado === 'completo'); }
+
+    async function asegurarActasCompletas(co, onProgreso) {
+      var estado = null;
+      try {
+        estado = await fetchJSON('GET', '/api/actas_status?co=' + encodeURIComponent(co));
+      } catch (e) {
+        estado = null; // sin job todavía (404) u otro problema -> se crea uno nuevo
+      }
+      if (!estado || estado.estado === 'error') {
+        onProgreso('Iniciando lectura de actas…');
+        estado = await fetchJSON('POST', '/api/actas_start', { co: co });
+      }
+      var vueltas = 0;
+      while (!jobCompleto(estado) && vueltas < 10) {
+        vueltas++;
+        var pendientes = (estado.actas_pendientes != null) ? estado.actas_pendientes : '?';
+        onProgreso('Leyendo actas… (' + pendientes + ' pendiente(s), paso ' + vueltas + ')');
+        estado = await fetchJSON('POST', '/api/actas_step', { co: co });
+      }
+      if (!jobCompleto(estado)) {
+        throw new Error('El análisis de actas no terminó tras varios intentos — dale "Analizar" de nuevo, sigue donde quedó.');
+      }
+      return estado;
+    }
+
+    // ---------- Secciones/categorías de equipo (mismos nombres que usa el backend) ----------
+    var SECCIONES_ALCANCE = [
+      { key: 'medidor', label: 'Medidor' }, { key: 'tc', label: 'TC' }, { key: 'tp', label: 'TP (solo indirecta)' },
+      { key: 'bloque_pruebas', label: 'Bloque de pruebas' }, { key: 'cable', label: 'Cable' }, { key: 'celda', label: 'Celda' }
+    ];
+    var ETIQUETAS_EQUIPO_ALCANCE = {
+      medidor: { grupo: 'Medidor', tipo: 'Medidor' },
+      tc: { grupo: 'TC', tipo: 'Transformador de corriente' },
+      tp: { grupo: 'TP', tipo: 'Transformador de potencial' },
+      bloque_pruebas: { grupo: 'Bloque de pruebas', tipo: 'Bloque de prueba' },
+      cable: { grupo: 'Cable', tipo: 'Cable' },
+      celda: { grupo: 'Celda', tipo: 'Celda' }
+    };
+    function describirCondicionActualCliente(a) {
+      var partes = [];
+      partes.push(a.certificado_conformidad ? 'con conformidad' : 'SIN conformidad');
+      partes.push(a.certificado_calibracion ? (a.calibracion_vencida ? 'calibración VENCIDA' : 'calibración vigente') : 'SIN calibración');
+      return partes.join(', ');
+    }
+
+    // ---------- Tarjeta inicial por CO: dictamen + botón Analizar ----------
+    var estadoAnalisisCOs = {};
+
+    function actualizarResumenAnalisis() {
+      var resumenEl = document.getElementById('resumenAnalisisTodos');
+      var btnReintentar = document.getElementById('btnReintentarFallidos');
+      var ids = Object.keys(estadoAnalisisCOs);
+      if (!ids.length) { resumenEl.textContent = ''; btnReintentar.style.display = 'none'; return; }
+      var estados = ids.map(function (id) { return estadoAnalisisCOs[id]; });
+      var ok = estados.filter(function (e) { return e.status === 'ok'; }).length;
+      var error = estados.filter(function (e) { return e.status === 'error'; }).length;
+      var corriendo = estados.filter(function (e) { return e.status === 'corriendo'; }).length;
+      var partes = [];
+      if (corriendo) partes.push(corriendo + ' corriendo');
+      partes.push(ok + ' OK');
+      if (error) partes.push(error + ' con error: ' + estados.filter(function (e) { return e.status === 'error'; }).map(function (e) { return e.co; }).join(', '));
+      resumenEl.textContent = 'Analizar todos — ' + partes.join(', ') + '.';
+      btnReintentar.style.display = (error > 0 && corriendo === 0) ? '' : 'none';
+    }
+
+    function renderFormularioDictamen(co) {
+      var id = 'alcance_' + co.replace(/[^A-Za-z0-9]/g, '');
+      var html = '<div class="card" style="margin-top:14px;" id="' + id + '">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">';
+      html += '<div class="card-title" style="margin:0;">' + escapeHtml(co) + '</div>';
+      html += '<button class="secondary-btn" id="' + id + '_btnToggle" style="margin:0;padding:5px 12px;font-size:12px;">− Minimizar</button>';
+      html += '</div>';
+      html += '<div id="' + id + '_body">';
+      html += '<label>Clasificación</label>';
+      html += '<select id="' + id + '_clasificacion">' +
+        '<option value="normalizacion">Normalización (problema real de equipo/diseño)</option>' +
+        '<option value="recuperable">Recuperable (equipo bien, solo falta un documento)</option>' +
+        '<option value="cumple">Cumple (no requiere nada)</option>' +
+        '</select>';
+
+      html += '<div id="' + id + '_bloqueNormalizacion">';
+      html += '<div class="req-note" style="margin:10px 0 0;padding:0;border:none;">Se evalúan las 6 secciones automáticamente (medidor, TC, TP, bloque de pruebas, cable, celda) con lo que se encuentre en las actas y Metabase.</div>';
+      html += '<label class="checkbox-line"><input type="checkbox" id="' + id + '_capacidadIncierta" /> La capacidad del transformador (automática) NO es correcta</label>';
+      html += '<label class="checkbox-line"><input type="checkbox" id="' + id + '_sinActas" /> No leer actas para este CO — usar solo hoja maestra + hojas de normalización + equipos actuales</label>';
+      html += '<div class="req-note" style="margin:10px 0 0;padding:8px 10px;border:1px dashed var(--border);border-radius:var(--radius-sm);">' +
+        '<div style="margin-bottom:4px;">Si sabes que alguna sección está incompleta y el detector automático no la marque, fuérzala aquí:</div>';
+      SECCIONES_ALCANCE.forEach(function (s) {
+        html += '<label class="checkbox-line"><input type="checkbox" id="' + id + '_forzar_' + s.key + '" /> ' + escapeHtml(s.label) + '</label>';
+      });
+      html += '</div></div>';
+
+      html += '<div id="' + id + '_bloqueRecuperable" style="display:none;">';
+      html += '<label for="' + id + '_detalle">Qué falta (una línea por ítem)</label>';
+      html += '<textarea id="' + id + '_detalle" rows="2" placeholder="ej. Celda de medida: falta conformidad (Carta)"></textarea>';
+      html += '</div>';
+
+      html += '<button id="' + id + '_btnAnalizar" class="btn-analizar-co" data-co="' + escapeHtml(co) + '" data-cardid="' + id + '">Analizar</button>';
+      html += '<div class="spinner" id="' + id + '_spinnerAnalizar">Iniciando…</div>';
+      html += '<div id="' + id + '_resultado"></div>';
+      html += '</div></div>';
+
+      document.getElementById('resultadosAlcance').insertAdjacentHTML('beforeend', html);
+
+      document.getElementById(id + '_btnToggle').addEventListener('click', function () {
+        var body = document.getElementById(id + '_body');
+        var colapsando = body.style.display !== 'none';
+        body.style.display = colapsando ? 'none' : '';
+        this.textContent = colapsando ? '+ Expandir' : '− Minimizar';
+      });
+
+      var selectClasificacion = document.getElementById(id + '_clasificacion');
+      function actualizarBloques() {
+        document.getElementById(id + '_bloqueNormalizacion').style.display = selectClasificacion.value === 'normalizacion' ? '' : 'none';
+        document.getElementById(id + '_bloqueRecuperable').style.display = selectClasificacion.value === 'recuperable' ? '' : 'none';
+      }
+      selectClasificacion.addEventListener('change', actualizarBloques);
+      actualizarBloques();
+
+      document.getElementById(id + '_btnAnalizar').addEventListener('click', function () { ejecutarAnalisis(id, co); });
+    }
+
+    // ---------- Ejecuta el análisis completo de UN CO (actas + /api/analizar_alcance) ----------
+    async function ejecutarAnalisis(id, co) {
+      estadoAnalisisCOs[id] = { co: co, status: 'corriendo' };
+      actualizarResumenAnalisis();
+      setRunning(id + '_btnAnalizar', id + '_spinnerAnalizar', true);
+      var destino = document.getElementById(id + '_resultado');
+      var spinnerEl = document.getElementById(id + '_spinnerAnalizar');
+      destino.innerHTML = '';
+
+      try {
+        var dictamen = { clasificacion: document.getElementById(id + '_clasificacion').value };
+        if (dictamen.clasificacion === 'normalizacion') {
+          dictamen.capacidadIncierta = document.getElementById(id + '_capacidadIncierta').checked;
+          dictamen.sinActas = document.getElementById(id + '_sinActas').checked;
+          dictamen.seccionesForzadas = {};
+          SECCIONES_ALCANCE.forEach(function (s) {
+            dictamen.seccionesForzadas[s.key] = document.getElementById(id + '_forzar_' + s.key).checked;
+          });
+        } else if (dictamen.clasificacion === 'recuperable') {
+          dictamen.detalleFaltante = document.getElementById(id + '_detalle').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+        }
+
+        if (!dictamen.sinActas) {
+          await asegurarActasCompletas(co, function (msg) { spinnerEl.textContent = msg; });
+        }
+        spinnerEl.textContent = 'Calculando propuesta (CAPEX)…';
+        var res = await fetchJSON('POST', '/api/analizar_alcance', { co: co, dictamen: dictamen });
+
+        setRunning(id + '_btnAnalizar', id + '_spinnerAnalizar', false);
+        renderTarjetaAlcance(id + '_resultado', res);
+        estadoAnalisisCOs[id] = { co: co, status: 'ok' };
+      } catch (e) {
+        setRunning(id + '_btnAnalizar', id + '_spinnerAnalizar', false);
+        destino.innerHTML = renderError(e);
+        estadoAnalisisCOs[id] = { co: co, status: 'error', mensaje: e.message };
+      }
+      actualizarResumenAnalisis();
+    }
+
+    // ---------- "Analizar todos" / "Reintentar fallidos": cola secuencial ----------
+    var TIMEOUT_POR_CO_MS = 240000; // 4 min — actas + LLM pueden tardar, mejor no cortar de más
+
+    function analizarListaSecuencial(lista) {
+      function siguiente(i) {
+        if (i >= lista.length) { actualizarResumenAnalisis(); return; }
+        var item = lista[i];
+        var yaAvanzo = false;
+        function avanzar() {
+          if (yaAvanzo) return;
+          yaAvanzo = true;
+          clearTimeout(vencido);
+          siguiente(i + 1);
+        }
+        var vencido = setTimeout(function () {
+          var st = estadoAnalisisCOs[item.id];
+          if (st && st.status === 'corriendo') {
+            var destino = document.getElementById(item.id + '_resultado');
+            if (destino) destino.innerHTML = renderError({ message: 'Este CO está tardando mucho más de lo normal — se sigue con el siguiente sin esperarlo más.' });
+            estadoAnalisisCOs[item.id] = { co: item.co, status: 'error', mensaje: 'tardó demasiado' };
+            actualizarResumenAnalisis();
+          }
+          avanzar();
+        }, TIMEOUT_POR_CO_MS);
+        ejecutarAnalisis(item.id, item.co).then(avanzar).catch(avanzar);
+      }
+      siguiente(0);
+    }
+
+    document.getElementById('btnAnalizarAlcance').addEventListener('click', function () {
+      var texto = document.getElementById('cosAlcance').value;
+      var cos = texto.split(/[\s,;]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+      if (!cos.length) { alert('Escribe al menos un código CO.'); return; }
+      document.getElementById('resultadosAlcance').innerHTML = '';
+      estadoAnalisisCOs = {};
+      cos.forEach(function (co) { renderFormularioDictamen(co); });
+    });
+
+    document.getElementById('btnAnalizarTodos').addEventListener('click', function () {
+      var botones = document.querySelectorAll('#resultadosAlcance .btn-analizar-co');
+      if (!botones.length) { alert('Primero dale "Analizar" para armar las tarjetas por CO.'); return; }
+      var pendientes = Array.prototype.map.call(botones, function (btn) {
+        return { id: btn.getAttribute('data-cardid'), co: btn.getAttribute('data-co') };
+      });
+      analizarListaSecuencial(pendientes);
+    });
+
+    document.getElementById('btnReintentarFallidos').addEventListener('click', function () {
+      var fallidos = Object.keys(estadoAnalisisCOs)
+        .filter(function (id) { return estadoAnalisisCOs[id].status === 'error'; })
+        .map(function (id) { return { id: id, co: estadoAnalisisCOs[id].co }; });
+      if (fallidos.length) analizarListaSecuencial(fallidos);
+    });
+
+    function colapsarTodasLasTarjetas(colapsar) {
+      document.querySelectorAll('#resultadosAlcance .card').forEach(function (card) {
+        var body = card.querySelector('[id$="_body"]');
+        var btn = card.querySelector('[id$="_btnToggle"]');
+        if (!body || !btn) return;
+        body.style.display = colapsar ? 'none' : '';
+        btn.textContent = colapsar ? '+ Expandir' : '− Minimizar';
+      });
+    }
+    document.getElementById('btnColapsarTodas').addEventListener('click', function () { colapsarTodasLasTarjetas(true); });
+    document.getElementById('btnExpandirTodas').addEventListener('click', function () { colapsarTodasLasTarjetas(false); });
+
+    // ---------- Render del resultado de /api/analizar_alcance ----------
+    function renderTarjetaAlcance(id, res) {
+      var d = res.diagnostico || {};
+      var html = '<div class="subsection"><h3>' + escapeHtml(res.cliente || '(cliente no encontrado en la hoja de origen)') +
+        (res.or ? ' · ' + escapeHtml(res.or) : '') + (res.maniobra ? ' · ' + escapeHtml(res.maniobra) : '') + '</h3></div>';
+
+      if (res.acta && res.acta.tipo_acta) {
+        html += '<div class="line">Última acta usada: ' + escapeHtml(res.acta.tipo_acta) + ' ' + escapeHtml(res.acta.fecha_acta || '') +
+          (res.acta.acta_url ? ' — <a href="' + res.acta.acta_url + '" target="_blank">ver PDF</a>' : '') + '</div>';
+        if (res.acta.actas && res.acta.actas.length > 1) {
+          html += '<div class="subsection"><h3>Actas revisadas (' + res.acta.actas.length + ')</h3>';
+          res.acta.actas.forEach(function (a) {
+            html += '<div class="item">' + escapeHtml(a.tipo) + ' ' + escapeHtml(a.fecha || '') +
+              (a.aporte && a.aporte.length ? ' — aportó ' + escapeHtml(a.aporte.join(', ')) : ' — sin datos nuevos') +
+              (a.url ? ' — <a href="' + a.url + '" target="_blank">ver</a>' : '') + '</div>';
+          });
+          html += '</div>';
+        }
+        if (res.acta.observaciones && res.acta.observaciones.length) {
+          html += '<div class="subsection"><h3>Observaciones de las actas</h3>';
+          res.acta.observaciones.forEach(function (o) { html += '<div class="item">' + escapeHtml(o) + '</div>'; });
+          html += '</div>';
+        }
+      } else {
+        html += '<div class="line warn">No encontré acta útil para este CO — el diagnóstico usa solo hoja maestra / hojas de normalización.</div>';
+      }
+
+      if (res.maestro) {
+        html += '<div class="subsection"><h3>Hoja maestra (CONTROL)</h3>';
+        html += '<div class="item">Medida: <b>' + escapeHtml(res.maestro.medida || '?') + '</b> · Conexión: ' + escapeHtml(res.maestro.conexion || '?') +
+          ' · Nivel de tensión: ' + escapeHtml(res.maestro.nivel_tension) +
+          ' · Capacidad: ' + (res.maestro.capacidad_transformador != null ? res.maestro.capacidad_transformador + ' kVA' : '?') +
+          ' · Uso: ' + escapeHtml(res.maestro.propiedad_activos || '?') + '</div>';
+        html += '</div>';
+      }
+
+      html += '<div class="subsection"><h3>Diagnóstico</h3>';
+      html += '<div class="item">Tipo de medida actual: <b>' + escapeHtml(d.tipo_medida_actual || '?') +
+        '</b> → recomendado: <b>' + escapeHtml(d.tipo_medida_final || '?') + '</b>' +
+        (d.reclasificado ? ' <span class="warn">(reclasificado por Art. 19)</span>' : '') + '</div>';
+      html += '<div class="item">Nivel de tensión: ' + escapeHtml(d.nivel_tension || '?') +
+        ' · Capacidad: ' + (d.kva != null ? d.kva + ' kVA' : '?') +
+        (d.uso_transformador ? ' · Uso del transformador: ' + escapeHtml(d.uso_transformador) : '') + '</div>';
+      if (d.motivo) html += '<div class="item" style="color:var(--text-faint);">' + escapeHtml(d.motivo) + '</div>';
+      html += '</div>';
+
+      if (res.alertas && res.alertas.length) {
+        html += '<div class="subsection"><h3 class="warn">Requiere tu revisión</h3>';
+        res.alertas.forEach(function (a) { html += '<div class="item warn">' + escapeHtml(a) + '</div>'; });
+        html += '</div>';
+      }
+
+      if (res.equipos_existentes && res.equipos_existentes.length) {
+        html += '<div class="subsection"><h3>Ya existe en "Equipos" (' + res.equipos_existentes.length + ')</h3>';
+        res.equipos_existentes.forEach(function (f) {
+          html += '<div class="item">' + escapeHtml(f.sku || '(fila con SKU vacío)') + (f.tipo ? ' — ' + escapeHtml(f.tipo) : '') + '</div>';
+        });
+        html += '</div>';
+      }
+
+      if (res.equipos_actuales) {
+        var conDatos = Object.keys(ETIQUETAS_EQUIPO_ALCANCE).filter(function (k) { return res.equipos_actuales[k]; });
+        if (conDatos.length) {
+          html += '<div class="subsection"><h3>Instalado actualmente (Metabase)</h3>';
+          conDatos.forEach(function (k) {
+            var a = res.equipos_actuales[k];
+            var linea = (a.sku ? '"' + a.sku + '"' : '(sin sku)') + (a.marca ? ', marca ' + a.marca : '') +
+              ' — ' + (a.certificado_conformidad ? 'con conformidad' : 'SIN conformidad') + ', ' +
+              (a.certificado_calibracion ? (a.calibracion_vencida ? 'calibración VENCIDA' : 'calibración vigente') : 'SIN calibración');
+            html += '<div class="item' + (a.calibracion_vencida || !a.certificado_conformidad ? ' warn' : '') + '">' +
+              '<b>' + escapeHtml(ETIQUETAS_EQUIPO_ALCANCE[k].grupo) + '</b>: ' + escapeHtml(linea) + '</div>';
+          });
+          html += '</div>';
+        }
+      }
+
+      html += '<div class="subsection"><h3>Propuesta</h3><div id="' + id + '_filas"></div>';
+      if (!res.propuesta || !res.propuesta.length) html += '<div class="item">Nada pendiente por proponer.</div>';
+      html += '<div class="toolbar" style="margin-top:8px;">';
+      html += '<select id="' + id + '_selCategoriaManual" style="width:auto;margin:0;padding:6px 8px;font-size:12.5px;">';
+      Object.keys(ETIQUETAS_EQUIPO_ALCANCE).forEach(function (k) {
+        html += '<option value="' + k + '">' + escapeHtml(ETIQUETAS_EQUIPO_ALCANCE[k].grupo) + '</option>';
+      });
+      html += '<option value="">(otro / sin categoría)</option></select>';
+      html += '<button class="secondary-btn" id="' + id + '_btnAgregar" style="margin:0;">+ Agregar fila manual</button>';
+      html += '</div>';
+      html += '<button class="copy-btn" id="' + id + '_btnCopiarPropuesta">📋 Copiar filas para pegar en "Equipos"</button>';
+      html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">Cada línea: SKU, Cantidad, Tipo (separadas por tabulador) — pega debajo del código de este CO en la hoja "Equipos".</div>';
+      html += '</div>';
+
+      html += '<div class="subsection"><h3>Mano de obra (OPEX)</h3>';
+      html += '<div class="req-note" style="margin:0 0 8px;padding:0;border:none;">Solo vista previa — no se guarda en ninguna hoja.</div>';
+      html += '<label class="checkbox-line" style="margin-top:0;"><input type="checkbox" id="' + id + '_instalacionNueva" /> Es instalación nueva (no hay equipo previo que retirar)</label>';
+      html += '<label style="margin-top:10px;">OR manual (opcional, deja vacío para resolverlo solo)</label>';
+      html += '<input id="' + id + '_orManual" placeholder="' + escapeHtml(res.or || 'ej. EPM ANTIOQUIA') + '" />';
+      html += '<button id="' + id + '_btnOpex" class="secondary-btn">Calcular mano de obra</button>';
+      html += '<div class="spinner" id="' + id + '_spinnerOpex">Calculando…</div>';
+      html += '<div id="' + id + '_opexResultado"></div>';
+      html += '</div>';
+
+      document.getElementById(id).innerHTML = html;
+
+      var estado = { filas: [], contador: 0 };
+      (res.propuesta || []).forEach(function (p) { agregarFilaAlcance(id, estado, p); });
+
+      document.getElementById(id + '_btnAgregar').addEventListener('click', function () {
+        var cat = document.getElementById(id + '_selCategoriaManual').value;
+        var etiqueta = ETIQUETAS_EQUIPO_ALCANCE[cat];
+        var actual = (cat && res.equipos_actuales) ? res.equipos_actuales[cat] : null;
+        agregarFilaAlcance(id, estado, {
+          grupo: etiqueta ? etiqueta.grupo : 'Manual',
+          cantidad: 1,
+          tipo: etiqueta ? etiqueta.tipo : '',
+          sku: actual ? (actual.sku || '') : '',
+          razon: actual ? 'Fila manual — precargada con el equipo actualmente instalado (' + describirCondicionActualCliente(actual) + ').' : '',
+          alternativas: []
+        });
+      });
+
+      document.getElementById(id + '_btnCopiarPropuesta').addEventListener('click', function () {
+        var filas = estado.filas
+          .filter(function (f) { return !document.getElementById(f.idExcluir).checked; })
+          .map(function (f) {
+            return [
+              document.getElementById(f.idSku).value.trim(),
+              parseInt(document.getElementById(f.idCantidad).value, 10) || 1,
+              document.getElementById(f.idTipo).value.trim()
+            ].join('\t');
+          });
+        if (!filas.length) { alert('No hay ninguna fila con SKU para copiar.'); return; }
+        copiarTexto(filas.join('\n'), this);
+      });
+
+      document.getElementById(id + '_btnOpex').addEventListener('click', function () {
+        var filasCable = estado.filas
+          .filter(function (f) { return !document.getElementById(f.idExcluir).checked; })
+          .filter(function (f) { return (f.grupo || '').toLowerCase().indexOf('cable') !== -1; })
+          .map(function (f) {
+            return { grupo: f.grupo, cantidad: parseInt(document.getElementById(f.idCantidad).value, 10) || 1 };
+          });
+        var orManual = document.getElementById(id + '_orManual').value.trim();
+        var body = {
+          co: res.co,
+          tipo_medida_final: d.tipo_medida_final,
+          ubicacion: (res.spec || {}).ubicacion_medida || null,
+          secciones: res.secciones || {},
+          es_instalacion_nueva: document.getElementById(id + '_instalacionNueva').checked,
+          filas_cable: filasCable
+        };
+        if (orManual) body.or_manual = orManual;
+
+        setRunning(id + '_btnOpex', id + '_spinnerOpex', true);
+        var destinoOpex = document.getElementById(id + '_opexResultado');
+        destinoOpex.innerHTML = '';
+        fetchJSON('POST', '/api/opex_resolver', body).then(function (opex) {
+          setRunning(id + '_btnOpex', id + '_spinnerOpex', false);
+          destinoOpex.innerHTML = renderTablaOpex(opex);
+        }).catch(function (err) {
+          setRunning(id + '_btnOpex', id + '_spinnerOpex', false);
+          destinoOpex.innerHTML = renderError(err);
+        });
+      });
+    }
+
+    function renderTablaOpex(opex) {
+      if (opex.error) return '<div class="item warn">' + escapeHtml(opex.error) + '</div>';
+      if (!opex.filas || !opex.filas.length) return '<div class="item">No se identificaron maniobras para este CO.</div>';
+
+      var html = '';
+      if (opex.nota) html += '<div class="item warn" style="padding:0 0 8px;border:none;">' + escapeHtml(opex.nota) + '</div>';
+      if (opex.alertas && opex.alertas.length) {
+        opex.alertas.forEach(function (a) { html += '<div class="item warn" style="padding:0 0 4px;border:none;">⚠ ' + escapeHtml(a) + '</div>'; });
+      }
+      html += '<div class="req-note" style="margin:0 0 8px;padding:0;border:none;">Operador tarifario: <b>' + escapeHtml(opex.operador) +
+        '</b> (OR original: ' + escapeHtml(opex.orOriginal || '?') + ')' +
+        (opex.opcionCumplimiento ? ' · Opción de cumplimiento: ' + escapeHtml(opex.opcionCumplimiento) : '') + '</div>';
+
+      html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">';
+      html += '<thead><tr style="text-align:left;color:var(--text-sub);border-bottom:1px solid var(--border-soft);">' +
+        '<th style="padding:5px 6px;">Maniobra</th><th style="padding:5px 6px;">Origen</th>' +
+        '<th style="padding:5px 6px;text-align:right;">Cant.</th><th style="padding:5px 6px;text-align:right;">Unitario</th>' +
+        '<th style="padding:5px 6px;text-align:right;">Total MO</th><th style="padding:5px 6px;text-align:right;">Carro canasta</th>' +
+        '<th style="padding:5px 6px;text-align:right;">Descargo</th><th style="padding:5px 6px;text-align:right;">Acompañ.</th>' +
+        '<th style="padding:5px 6px;text-align:right;">Total c/extras</th></tr></thead><tbody>';
+
+      var ORIGEN_LABEL = { texto: 'del acta', equipo: 'del equipo propuesto', 'auto-pareja': 'pareja automática', 'extra-fija': 'fija (TC/TP MT)' };
+      opex.filas.forEach(function (f) {
+        html += '<tr style="border-bottom:1px solid var(--border-soft);">' +
+          '<td style="padding:5px 6px;">' + escapeHtml(f.maniobra) + '</td>' +
+          '<td style="padding:5px 6px;color:var(--text-faint);">' + escapeHtml(ORIGEN_LABEL[f.origen] || f.origen) + '</td>' +
+          '<td style="padding:5px 6px;text-align:right;">' + f.cantidad + '</td>' +
+          '<td style="padding:5px 6px;text-align:right;">' + formatoPesos(f.costoUnitarioMO) + '</td>' +
+          '<td style="padding:5px 6px;text-align:right;">' + formatoPesos(f.costoTotalMO) + '</td>' +
+          '<td style="padding:5px 6px;text-align:right;">' + (f.carroCanasta ? formatoPesos(f.carroCanasta) : '—') + '</td>' +
+          '<td style="padding:5px 6px;text-align:right;">' + (f.descargo ? formatoPesos(f.descargo) : '—') + '</td>' +
+          '<td style="padding:5px 6px;text-align:right;">' + (f.acompanamiento ? formatoPesos(f.acompanamiento) : '—') + '</td>' +
+          '<td style="padding:5px 6px;text-align:right;font-weight:600;">' + formatoPesos(f.costoTotalConExtras) + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table></div>';
+      html += '<div class="line" style="text-align:right;font-weight:700;margin-top:6px;">Total general: ' + formatoPesos(opex.totalGeneral) + '</div>';
+
+      var idBtnCopiar = 'opexCopiar_' + Math.random().toString(36).slice(2);
+      var textoParaPegar = opex.filas.map(function (f) {
+        return [f.maniobra, f.cantidad, f.costoUnitarioMO, f.costoTotalMO].join('\t');
+      }).join('\n');
+      html += '<button class="copy-btn" id="' + idBtnCopiar + '" style="margin-top:8px;">📋 Copiar filas para pegar en Sheets</button>';
+      html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">Cada línea: Maniobra, Cantidad, Costo unitario, Costo total (separadas por tabulador).</div>';
+
+      setTimeout(function () {
+        var btn = document.getElementById(idBtnCopiar);
+        if (btn) btn.addEventListener('click', function () { copiarTexto(textoParaPegar, btn); });
+      }, 0);
+
+      return html;
+    }
+
+    function agregarFilaAlcance(cardId, estado, p) {
+      var n = estado.contador++;
+      var rowId = cardId + '_fila' + n;
+      var idSku = rowId + '_sku', idCantidad = rowId + '_cant', idTipo = rowId + '_tipo',
+        idExcluir = rowId + '_excluir', idAlt = rowId + '_alt';
+
+      var html = '<div class="item" id="' + rowId + '" style="display:flex;flex-direction:column;gap:6px;padding:10px 0;">';
+      html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">';
+      html += '<b style="min-width:80px;">' + escapeHtml(p.grupo || '') + '</b>';
+      html += '<input id="' + idSku + '" value="' + escapeHtml(p.sku || '') + '" placeholder="SKU…" style="flex:2;min-width:160px;margin:0;padding:6px 8px;font-size:12.5px;" />';
+      html += '<input id="' + idCantidad + '" type="number" min="1" value="' + (p.cantidad || 1) + '" style="width:56px;margin:0;padding:6px 8px;font-size:12.5px;" />';
+      html += '<input id="' + idTipo + '" value="' + escapeHtml(p.tipo || '') + '" placeholder="Tipo…" style="flex:1;min-width:120px;margin:0;padding:6px 8px;font-size:12.5px;" />';
+      html += '<label class="checkbox-line" style="margin:0;"><input id="' + idExcluir + '" type="checkbox" /> excluir</label>';
+      html += '</div>';
+      if (p.costo_estimado) html += '<div style="font-size:11.5px;color:var(--text-faint);">Costo estimado: ' + formatoPesos(p.costo_estimado) + '</div>';
+      if (p.razon) html += '<div style="font-size:11.5px;color:var(--text-faint);">' + escapeHtml(p.razon) + '</div>';
+      if (p.alternativas && p.alternativas.length) {
+        html += '<select id="' + idAlt + '" style="margin:0;">';
+        html += '<option value="">— elegir de ' + p.alternativas.length + ' candidato(s) —</option>';
+        p.alternativas.forEach(function (alt) {
+          var costoTxt = alt.costo ? ' (' + formatoPesos(alt.costo) + ')' : '';
+          html += '<option value="' + escapeHtml(alt.sku) + '">' + escapeHtml(alt.sku) + costoTxt + '</option>';
+        });
+        html += '</select>';
+      }
+      if (p.requiere_confirmacion) html += '<div class="item warn" style="padding:0;border:none;">⚠ Sin candidato automático seguro — elige uno o escribe el SKU tú mismo.</div>';
+      html += '</div>';
+
+      document.getElementById(cardId + '_filas').insertAdjacentHTML('beforeend', html);
+
+      if (p.alternativas && p.alternativas.length) {
+        document.getElementById(idAlt).addEventListener('change', function () {
+          if (this.value) document.getElementById(idSku).value = this.value;
+        });
+      }
+
+      estado.filas.push({ idSku: idSku, idCantidad: idCantidad, idTipo: idTipo, idExcluir: idExcluir, grupo: p.grupo || '' });
+    }
+  </script>
+</body>
+</html>
