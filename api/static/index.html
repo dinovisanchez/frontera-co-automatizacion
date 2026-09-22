@@ -676,7 +676,7 @@
         destinoOpex.innerHTML = '';
         fetchJSON('POST', '/api/opex_resolver', body).then(function (opex) {
           setRunning(id + '_btnOpex', id + '_spinnerOpex', false);
-          destinoOpex.innerHTML = renderTablaOpex(opex);
+          pintarTablaOpex(opex, destinoOpex);
         }).catch(function (err) {
           setRunning(id + '_btnOpex', id + '_spinnerOpex', false);
           destinoOpex.innerHTML = renderError(err);
@@ -684,9 +684,14 @@
       });
     }
 
-    function renderTablaOpex(opex) {
-      if (opex.error) return '<div class="item warn">' + escapeHtml(opex.error) + '</div>';
-      if (!opex.filas || !opex.filas.length) return '<div class="item">No se identificaron maniobras para este CO.</div>';
+    var ORIGEN_LABEL_OPEX = { texto: 'del acta', equipo: 'del equipo propuesto', 'auto-pareja': 'pareja automática', 'extra-fija': 'fija (TC/TP MT)', manual: 'agregada a mano' };
+
+    /** Dibuja (o redibuja) la tabla de OPEX dentro de `destinoEl` — se llama de nuevo cada vez
+     *  que se agrega o quita una fila manual, así que `opex.filas` es la fuente de verdad y
+     *  esta función nunca asume que ya existía nada en el DOM. */
+    function pintarTablaOpex(opex, destinoEl) {
+      if (opex.error) { destinoEl.innerHTML = '<div class="item warn">' + escapeHtml(opex.error) + '</div>'; return; }
+      opex.filas = opex.filas || [];
 
       var html = '';
       if (opex.nota) html += '<div class="item warn" style="padding:0 0 8px;border:none;">' + escapeHtml(opex.nota) + '</div>';
@@ -698,33 +703,46 @@
         (opex.opcionCumplimiento ? ' · Opción de cumplimiento: ' + escapeHtml(opex.opcionCumplimiento) : '') + '</div>';
 
       var idTabla = 'opexTabla_' + Math.random().toString(36).slice(2);
-      html += '<div style="overflow-x:auto;"><table id="' + idTabla + '" style="width:100%;border-collapse:collapse;font-size:12px;">';
-      html += '<thead><tr style="text-align:left;color:var(--text-sub);border-bottom:1px solid var(--border-soft);">' +
-        '<th style="padding:5px 6px;"></th><th style="padding:5px 6px;">Maniobra</th><th style="padding:5px 6px;">Origen</th>' +
-        '<th style="padding:5px 6px;text-align:right;">Cant.</th><th style="padding:5px 6px;text-align:right;">Unitario</th>' +
-        '<th style="padding:5px 6px;text-align:right;">Total MO</th><th style="padding:5px 6px;text-align:right;">Carro canasta</th>' +
-        '<th style="padding:5px 6px;text-align:right;">Descargo</th><th style="padding:5px 6px;text-align:right;">Acompañ.</th>' +
-        '<th style="padding:5px 6px;text-align:right;">Total c/extras</th></tr></thead><tbody>';
+      if (opex.filas.length) {
+        html += '<div style="overflow-x:auto;"><table id="' + idTabla + '" style="width:100%;border-collapse:collapse;font-size:12px;">';
+        html += '<thead><tr style="text-align:left;color:var(--text-sub);border-bottom:1px solid var(--border-soft);">' +
+          '<th style="padding:5px 6px;"></th><th style="padding:5px 6px;">Maniobra</th><th style="padding:5px 6px;">Origen</th>' +
+          '<th style="padding:5px 6px;text-align:right;">Cant.</th><th style="padding:5px 6px;text-align:right;">Unitario</th>' +
+          '<th style="padding:5px 6px;text-align:right;">Total MO</th><th style="padding:5px 6px;text-align:right;">Carro canasta</th>' +
+          '<th style="padding:5px 6px;text-align:right;">Descargo</th><th style="padding:5px 6px;text-align:right;">Acompañ.</th>' +
+          '<th style="padding:5px 6px;text-align:right;">Total c/extras</th></tr></thead><tbody>';
 
-      var ORIGEN_LABEL = { texto: 'del acta', equipo: 'del equipo propuesto', 'auto-pareja': 'pareja automática', 'extra-fija': 'fija (TC/TP MT)' };
-      opex.filas.forEach(function (f, i) {
-        var idExcluirOpex = idTabla + '_excluir' + i;
-        html += '<tr id="' + idTabla + '_fila' + i + '" style="border-bottom:1px solid var(--border-soft);">' +
-          '<td style="padding:5px 6px;"><input type="checkbox" id="' + idExcluirOpex + '" title="excluir" /></td>' +
-          '<td style="padding:5px 6px;">' + escapeHtml(f.maniobra) + '</td>' +
-          '<td style="padding:5px 6px;color:var(--text-faint);">' + escapeHtml(ORIGEN_LABEL[f.origen] || f.origen) + '</td>' +
-          '<td style="padding:5px 6px;text-align:right;">' + f.cantidad + '</td>' +
-          '<td style="padding:5px 6px;text-align:right;">' + formatoPesos(f.costoUnitarioMO) + '</td>' +
-          '<td style="padding:5px 6px;text-align:right;">' + formatoPesos(f.costoTotalMO) + '</td>' +
-          '<td style="padding:5px 6px;text-align:right;">' + (f.carroCanasta ? formatoPesos(f.carroCanasta) : '—') + '</td>' +
-          '<td style="padding:5px 6px;text-align:right;">' + (f.descargo ? formatoPesos(f.descargo) : '—') + '</td>' +
-          '<td style="padding:5px 6px;text-align:right;">' + (f.acompanamiento ? formatoPesos(f.acompanamiento) : '—') + '</td>' +
-          '<td style="padding:5px 6px;text-align:right;font-weight:600;">' + formatoPesos(f.costoTotalConExtras) + '</td>' +
-          '</tr>';
-      });
-      html += '</tbody></table></div>';
-      html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">Marca la casilla para excluir esa maniobra — no se copia ni se guarda si la excluyes.</div>';
-      html += '<div class="line" id="' + idTabla + '_total" style="text-align:right;font-weight:700;margin-top:6px;">Total general: ' + formatoPesos(opex.totalGeneral) + '</div>';
+        opex.filas.forEach(function (f, i) {
+          var idExcluirOpex = idTabla + '_excluir' + i, idQuitarOpex = idTabla + '_quitar' + i;
+          html += '<tr id="' + idTabla + '_fila' + i + '" style="border-bottom:1px solid var(--border-soft);">' +
+            '<td style="padding:5px 6px;white-space:nowrap;"><input type="checkbox" id="' + idExcluirOpex + '" title="excluir" />' +
+            ' <button type="button" id="' + idQuitarOpex + '" title="quitar esta fila" style="margin:0;padding:1px 6px;font-size:11px;background:none;border:1px solid var(--border-soft);color:var(--text-faint);border-radius:5px;cursor:pointer;">✕</button></td>' +
+            '<td style="padding:5px 6px;">' + escapeHtml(f.maniobra) + '</td>' +
+            '<td style="padding:5px 6px;color:var(--text-faint);">' + escapeHtml(ORIGEN_LABEL_OPEX[f.origen] || f.origen) + '</td>' +
+            '<td style="padding:5px 6px;text-align:right;">' + f.cantidad + '</td>' +
+            '<td style="padding:5px 6px;text-align:right;">' + formatoPesos(f.costoUnitarioMO) + '</td>' +
+            '<td style="padding:5px 6px;text-align:right;">' + formatoPesos(f.costoTotalMO) + '</td>' +
+            '<td style="padding:5px 6px;text-align:right;">' + (f.carroCanasta ? formatoPesos(f.carroCanasta) : '—') + '</td>' +
+            '<td style="padding:5px 6px;text-align:right;">' + (f.descargo ? formatoPesos(f.descargo) : '—') + '</td>' +
+            '<td style="padding:5px 6px;text-align:right;">' + (f.acompanamiento ? formatoPesos(f.acompanamiento) : '—') + '</td>' +
+            '<td style="padding:5px 6px;text-align:right;font-weight:600;">' + formatoPesos(f.costoTotalConExtras) + '</td>' +
+            '</tr>';
+        });
+        html += '</tbody></table></div>';
+        html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">Marca la casilla para excluir esa maniobra (no se copia ni se guarda), o dale ✕ para quitarla de la lista.</div>';
+      } else {
+        html += '<div class="item">No se identificaron maniobras para este CO — agrega una a mano abajo si hace falta.</div>';
+      }
+      var totalInicial = opex.filas.reduce(function (s, f) { return s + (f.costoTotalConExtras || 0); }, 0);
+      html += '<div class="line" id="' + idTabla + '_total" style="text-align:right;font-weight:700;margin-top:6px;">Total general: ' + formatoPesos(opex.totalGeneral != null ? opex.totalGeneral : totalInicial) + '</div>';
+
+      var idManiobraManual = idTabla + '_maniobraManual', idCantidadManual = idTabla + '_cantidadManual', idBtnAgregarManual = idTabla + '_btnAgregarManual';
+      html += '<div class="toolbar" style="margin-top:10px;">';
+      html += '<input id="' + idManiobraManual + '" placeholder="Nombre exacto de la maniobra…" style="flex:2;min-width:200px;margin:0;" />';
+      html += '<input id="' + idCantidadManual + '" type="number" min="1" value="1" style="width:70px;margin:0;" />';
+      html += '<button class="secondary-btn" id="' + idBtnAgregarManual + '" style="margin:0;">+ Agregar fila manual</button>';
+      html += '</div>';
+      html += '<div class="req-note" style="margin-top:4px;padding:0;border:none;">Escribe el nombre EXACTO de la maniobra tal como está en "ref_tarifario" — la hoja calcula el costo sola por ese nombre; aquí no se muestra costo para las agregadas a mano.</div>';
 
       var idBtnGuardar = 'opexGuardar_' + Math.random().toString(36).slice(2);
       var idSpinnerGuardar = 'opexSpinnerGuardar_' + Math.random().toString(36).slice(2);
@@ -734,55 +752,70 @@
       html += '<div class="spinner" id="' + idSpinnerGuardar + '">Guardando…</div>';
       html += '<div id="' + idResultGuardar + '"></div>';
       html += '<button class="copy-btn" id="' + idBtnCopiar + '">📋 O solo copiar filas (sin guardar)</button>';
-      html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">"Confirmado" agrega estas filas al final de la hoja "OPEX" (esa hoja no tiene columna de código CO para ubicar una posición puntual). Las que excluyas arriba no se copian ni se guardan.</div>';
+      html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">"Confirmado" agrega estas filas al final de la hoja "OPEX" (esa hoja no tiene columna de código CO para ubicar una posición puntual).</div>';
 
-      setTimeout(function () {
-        /** Filas de OPEX visibles (no excluidas) — recalcula el total en vivo si excluyes algo. */
-        function filasIncluidas() {
-          return opex.filas.filter(function (f, i) {
-            var chk = document.getElementById(idTabla + '_excluir' + i);
-            return !chk || !chk.checked;
-          });
-        }
-        function actualizarTotal() {
-          var total = filasIncluidas().reduce(function (s, f) { return s + (f.costoTotalConExtras || 0); }, 0);
-          var totalEl = document.getElementById(idTabla + '_total');
-          if (totalEl) totalEl.textContent = 'Total general: ' + formatoPesos(total);
-        }
-        opex.filas.forEach(function (f, i) {
+      destinoEl.innerHTML = html;
+
+      /** Filas de OPEX visibles (no excluidas) — recalcula el total en vivo si excluyes algo. */
+      function filasIncluidas() {
+        return opex.filas.filter(function (f, i) {
           var chk = document.getElementById(idTabla + '_excluir' + i);
-          if (chk) chk.addEventListener('change', actualizarTotal);
+          return !chk || !chk.checked;
         });
-
-        var btnCopiar = document.getElementById(idBtnCopiar);
-        if (btnCopiar) btnCopiar.addEventListener('click', function () {
-          var texto = filasIncluidas().map(function (f) {
-            return [f.maniobra, f.cantidad, f.costoUnitarioMO, f.costoTotalMO].join('\t');
-          }).join('\n');
-          if (!texto) { alert('No hay ninguna fila incluida para copiar.'); return; }
-          copiarTexto(texto, btnCopiar);
+      }
+      function actualizarTotal() {
+        var total = filasIncluidas().reduce(function (s, f) { return s + (f.costoTotalConExtras || 0); }, 0);
+        var totalEl = document.getElementById(idTabla + '_total');
+        if (totalEl) totalEl.textContent = 'Total general: ' + formatoPesos(total);
+      }
+      opex.filas.forEach(function (f, i) {
+        var chk = document.getElementById(idTabla + '_excluir' + i);
+        if (chk) chk.addEventListener('change', actualizarTotal);
+        var btnQuitar = document.getElementById(idTabla + '_quitar' + i);
+        if (btnQuitar) btnQuitar.addEventListener('click', function () {
+          opex.filas.splice(i, 1);
+          pintarTablaOpex(opex, destinoEl);
         });
+      });
 
-        var btnGuardar = document.getElementById(idBtnGuardar);
-        if (btnGuardar) btnGuardar.addEventListener('click', function () {
-          var filas = filasIncluidas().map(function (f) {
-            return { maniobra: f.maniobra, cantidad: f.cantidad };
-          });
-          if (!filas.length) { alert('No hay ninguna fila incluida para guardar.'); return; }
-          setRunning(idBtnGuardar, idSpinnerGuardar, true);
-          var destino = document.getElementById(idResultGuardar);
-          destino.innerHTML = '';
-          fetchJSON('POST', '/api/guardar_opex', { co: opex.co, operador: opex.operador, filas: filas }).then(function (r) {
-            setRunning(idBtnGuardar, idSpinnerGuardar, false);
-            destino.innerHTML = '<div class="line ok">✓ Guardado (' + r.guardadas.length + ' fila(s)) — <a href="' + r.hoja_url + '" target="_blank">ver hoja OPEX</a></div>';
-          }).catch(function (err) {
-            setRunning(idBtnGuardar, idSpinnerGuardar, false);
-            destino.innerHTML = renderError(err);
-          });
+      var btnAgregarManual = document.getElementById(idBtnAgregarManual);
+      if (btnAgregarManual) btnAgregarManual.addEventListener('click', function () {
+        var nombre = document.getElementById(idManiobraManual).value.trim();
+        if (!nombre) { alert('Escribe el nombre de la maniobra.'); return; }
+        var cantidad = parseInt(document.getElementById(idCantidadManual).value, 10) || 1;
+        opex.filas.push({
+          maniobra: nombre, origen: 'manual', cantidad: cantidad,
+          costoUnitarioMO: 0, costoTotalMO: 0, carroCanasta: 0, descargo: 0, acompanamiento: 0, costoTotalConExtras: 0,
         });
-      }, 0);
+        pintarTablaOpex(opex, destinoEl);
+      });
 
-      return html;
+      var btnCopiar = document.getElementById(idBtnCopiar);
+      if (btnCopiar) btnCopiar.addEventListener('click', function () {
+        var texto = filasIncluidas().map(function (f) {
+          return [f.maniobra, f.cantidad, f.costoUnitarioMO, f.costoTotalMO].join('\t');
+        }).join('\n');
+        if (!texto) { alert('No hay ninguna fila incluida para copiar.'); return; }
+        copiarTexto(texto, btnCopiar);
+      });
+
+      var btnGuardar = document.getElementById(idBtnGuardar);
+      if (btnGuardar) btnGuardar.addEventListener('click', function () {
+        var filas = filasIncluidas().map(function (f) {
+          return { maniobra: f.maniobra, cantidad: f.cantidad };
+        });
+        if (!filas.length) { alert('No hay ninguna fila incluida para guardar.'); return; }
+        setRunning(idBtnGuardar, idSpinnerGuardar, true);
+        var destino = document.getElementById(idResultGuardar);
+        destino.innerHTML = '';
+        fetchJSON('POST', '/api/guardar_opex', { co: opex.co, operador: opex.operador, filas: filas }).then(function (r) {
+          setRunning(idBtnGuardar, idSpinnerGuardar, false);
+          destino.innerHTML = '<div class="line ok">✓ Guardado (' + r.guardadas.length + ' fila(s)) — <a href="' + r.hoja_url + '" target="_blank">ver hoja OPEX</a></div>';
+        }).catch(function (err) {
+          setRunning(idBtnGuardar, idSpinnerGuardar, false);
+          destino.innerHTML = renderError(err);
+        });
+      });
     }
 
     function agregarFilaAlcance(cardId, estado, p) {
