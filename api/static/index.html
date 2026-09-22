@@ -540,7 +540,13 @@
         }
       }
 
-      html += '<div class="subsection"><h3>Propuesta</h3><div id="' + id + '_filas"></div>';
+      html += '<div class="subsection">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" id="' + id + '_capexToggle">';
+      html += '<h3 style="margin:0;">Propuesta (CAPEX)</h3>';
+      html += '<button type="button" class="secondary-btn" style="margin:0;padding:3px 10px;font-size:11px;">− Colapsar</button>';
+      html += '</div>';
+      html += '<div id="' + id + '_capexBody" style="margin-top:10px;">';
+      html += '<div id="' + id + '_filas"></div>';
       if (!res.propuesta || !res.propuesta.length) html += '<div class="item">Nada pendiente por proponer.</div>';
       html += '<div class="toolbar" style="margin-top:8px;">';
       html += '<select id="' + id + '_selCategoriaManual" style="width:auto;margin:0;padding:6px 8px;font-size:12.5px;">';
@@ -555,6 +561,7 @@
       html += '<div id="' + id + '_resultGuardar"></div>';
       html += '<button class="copy-btn" id="' + id + '_btnCopiarPropuesta">📋 O solo copiar filas (sin guardar)</button>';
       html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">"Confirmado" inserta las filas debajo de lo que ya exista de este CO en "Equipos" (o al final si es la primera vez) — nunca sobrescribe nada. El botón de copiar es por si prefieres pegarlas tú mismo.</div>';
+      html += '</div>';
       html += '</div>';
 
       html += '<div class="subsection">';
@@ -575,13 +582,17 @@
 
       document.getElementById(id).innerHTML = html;
 
-      document.getElementById(id + '_opexToggle').addEventListener('click', function () {
-        var body = document.getElementById(id + '_opexBody');
-        var btn = this.querySelector('button');
-        var colapsado = body.style.display === 'none';
-        body.style.display = colapsado ? '' : 'none';
-        btn.textContent = colapsado ? '− Colapsar' : '+ Desplegar';
-      });
+      function cablearToggle(idToggle, idBody) {
+        document.getElementById(idToggle).addEventListener('click', function () {
+          var body = document.getElementById(idBody);
+          var btn = this.querySelector('button');
+          var colapsado = body.style.display === 'none';
+          body.style.display = colapsado ? '' : 'none';
+          btn.textContent = colapsado ? '− Colapsar' : '+ Desplegar';
+        });
+      }
+      cablearToggle(id + '_capexToggle', id + '_capexBody');
+      cablearToggle(id + '_opexToggle', id + '_opexBody');
 
       var estado = { filas: [], contador: 0 };
       (res.propuesta || []).forEach(function (p) { agregarFilaAlcance(id, estado, p); });
