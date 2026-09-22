@@ -597,6 +597,30 @@
         });
       });
 
+      /** A qué sección (medidor/tc/tp/bloque_pruebas/celda/cable) corresponde el "grupo" de
+       *  una fila de propuesta — mismas categorías que ETIQUETAS_EQUIPO_ALCANCE. */
+      function categoriaDesdeGrupo(grupo) {
+        var g = (grupo || '').toLowerCase();
+        if (g.indexOf('medidor') !== -1) return 'medidor';
+        if (g === 'tc') return 'tc';
+        if (g === 'tp') return 'tp';
+        if (g.indexOf('bloque') !== -1) return 'bloque_pruebas';
+        if (g.indexOf('celda') !== -1) return 'celda';
+        if (g.indexOf('cable') !== -1) return 'cable';
+        return null;
+      }
+
+      /** Si excluyes TODAS las filas de propuesta de una sección (ej. Medidor), esa sección
+       *  ya no debe contarse en OPEX — pero si la sección quedó marcada como deficiente sin
+       *  que se lograra armar ninguna fila (ej. TC compartido sin datos, solo alerta), no hay
+       *  nada que excluir, así que se respeta lo auto-detectado sin cambios. */
+      function seccionActivaParaOpex(key) {
+        if (!res.secciones || !res.secciones[key]) return false;
+        var filasDeCategoria = estado.filas.filter(function (f) { return categoriaDesdeGrupo(f.grupo) === key; });
+        if (!filasDeCategoria.length) return true;
+        return filasDeCategoria.some(function (f) { return !document.getElementById(f.idExcluir).checked; });
+      }
+
       document.getElementById(id + '_btnOpex').addEventListener('click', function () {
         var filasCable = estado.filas
           .filter(function (f) { return !document.getElementById(f.idExcluir).checked; })
@@ -604,13 +628,17 @@
           .map(function (f) {
             return { grupo: f.grupo, cantidad: parseInt(document.getElementById(f.idCantidad).value, 10) || 1 };
           });
+        var seccionesEfectivas = {};
+        ['medidor', 'tc', 'tp', 'bloque_pruebas', 'celda', 'cable'].forEach(function (k) {
+          seccionesEfectivas[k] = seccionActivaParaOpex(k);
+        });
         var orManual = document.getElementById(id + '_orManual').value.trim();
         var body = {
           co: res.co,
           tipo_medida_final: d.tipo_medida_final,
           tipo_medida_actual: d.tipo_medida_actual,
           ubicacion: (res.spec || {}).ubicacion_medida || null,
-          secciones: res.secciones || {},
+          secciones: seccionesEfectivas,
           es_instalacion_nueva: document.getElementById(id + '_instalacionNueva').checked,
           filas_cable: filasCable
         };
