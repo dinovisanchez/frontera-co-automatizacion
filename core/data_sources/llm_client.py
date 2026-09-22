@@ -86,6 +86,22 @@ class AnthropicClient:
             "messages": [{"role": "user", "content": contenido_mensaje}],
         }
 
+    def cuerpo_extraccion_puntual(
+        self, system_prompt: str, contenido_mensaje: list[dict], max_tokens: int, effort: str
+    ) -> dict:
+        """Para preguntas puntuales y baratas sobre UN documento (ej. el OR de una acta, o la
+        relación certificada de un TC/TP) — mismo patrón que
+        extraerRatioDeCertificadoCalibracion (Codigo.gs línea 3174-3205): max_tokens/effort
+        bajos, no los de la extracción completa de 14 campos.
+        """
+        return {
+            "model": self._cfg.model,
+            "max_tokens": max_tokens,
+            "output_config": {"effort": effort},
+            "system": system_prompt,
+            "messages": [{"role": "user", "content": contenido_mensaje}],
+        }
+
 
 def get_llm_client(cfg: AnthropicConfig) -> AnthropicClient:
     return AnthropicClient(cfg)

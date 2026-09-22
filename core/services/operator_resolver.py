@@ -1,29 +1,27 @@
-"""OPEX — resuelve el operador de red (OR) de un CO. Orden: hoja "Data" (origen) -> Metabase
-Card 82534 -> pendiente de revisión manual.
+"""OPEX — resuelve el operador de red (OR) de un CO. Orden: hoja "Data" (origen) -> acta más
+reciente en Metabase (Card 82534) -> pendiente de revisión manual.
 
-⚠️ La ruta de Metabase está BLOQUEADA a propósito (ver README, sección "Pendiente: parámetro
-'contrato'"): Codigo.gs nunca envía "contrato" como parámetro de consulta a la Card 82534 —
-solo lo recibe como columna del resultado (línea 626-630) — y dos intentos previos de que esa
-instancia de Metabase filtrara del lado del servidor fallaron (línea 707-716). No hay ninguna
-fuente en el código original de dónde saldría "contrato" por CO. Mientras eso no se confirme,
-_or_desde_metabase() levanta MetabaseFallbackPendiente en vez de adivinar, y
-resolver_operador_red() la convierte en un resultado "pendiente_manual" — el sistema sigue
-funcionando, solo avisa que ese CO necesita que alguien confirme el operador a mano.
+El OR NO es una columna de la Card 82534 (confirmado, Codigo.gs línea 626-630 y por Dinovi,
+2026-09-21) — vive DENTRO del texto del acta, igual que la relación de TC/TP certificada.
+Por eso el fallback no consulta Metabase por el dato directamente: usa Metabase solo para
+encontrar el `act_pdf_url` de la acta más reciente del CO (mismo filtro que usa CAPEX,
+TIPOS_ACTA_ALCANCE), descarga ese PDF, y le hace una pregunta puntual y barata a Claude
+(or_extractor.py) — NO corre la extracción completa de 14 campos solo para esto.
 """
 
 from dataclasses import dataclass
 
-from config.settings import FILA_INICIO_HOJA_ORIGEN, GID_HOJA_ORIGEN, MetabaseConfig
+from config.settings import FILA_INICIO_HOJA_ORIGEN, GID_HOJA_ORIGEN
+from core.data_sources.llm_client import AnthropicClient
+from core.data_sources.metabase_client import MetabaseClient
 from core.data_sources.sheets_client import SheetsClient
+from core.prompts.acta_extraction_prompt import TIPOS_ACTA_ALCANCE
+from core.services import acta_downloader, or_extractor
 from core.utils import normalizar_codigo
 
 FUENTE_HOJA_ORIGEN = "hoja_origen"
-FUENTE_METABASE = "metabase"
+FUENTE_ACTA_PDF = "acta_pdf"
 FUENTE_PENDIENTE_MANUAL = "pendiente_manual"
-
-
-class MetabaseFallbackPendiente(RuntimeError):
-    """Se lanza mientras el parámetro 'contrato' de la Card 82534 no esté confirmado."""
 
 
 @dataclass
@@ -50,29 +48,47 @@ def _or_desde_hoja_origen(sheets: SheetsClient, co: str) -> str | None:
     return None
 
 
-def _or_desde_metabase(cfg: MetabaseConfig, co: str) -> str | None:
-    raise MetabaseFallbackPendiente(
-        f'No se puede resolver el operador de "{co}" vía Metabase: falta confirmar de dónde '
-        'sale el parámetro "contrato" por CO para la Card 82534 (ver docstring de este módulo).'
-    )
+def _acta_pdf_mas_reciente(metabase: MetabaseClient, co: str) -> str | None:
+    filas = [
+        f for f in metabase.filas_por_co(co)
+        if (f.get("service_type_id") or "").upper() in TIPOS_ACTA_ALCANCE and f.get("act_pdf_url")
+    ]
+    if not filas:
+        return None
+    return max(filas, key=lambda f: f.get("fecha_visita") or "")["act_pdf_url"]
 
 
-def resolver_operador_red(sheets: SheetsClient, metabase_cfg: MetabaseConfig | None, co_raw: str) -> ResultadoOperador:
+def _or_desde_acta_pdf(metabase: MetabaseClient, llm: AnthropicClient, co: str) -> str | None:
+    url = _acta_pdf_mas_reciente(metabase, co)
+    if not url:
+        return None
+    descarga = acta_downloader.descargar_pdf_acta(url)
+    if not descarga.ok:
+        return None
+    return or_extractor.extraer_or_desde_pdf(descarga.bytes_pdf, llm)
+
+
+def resolver_operador_red(
+    sheets: SheetsClient, metabase: MetabaseClient | None, llm: AnthropicClient | None, co_raw: str
+) -> ResultadoOperador:
     co = normalizar_codigo(co_raw)
 
     or_hoja = _or_desde_hoja_origen(sheets, co)
     if or_hoja:
         return ResultadoOperador(co=co, or_raw=or_hoja, fuente=FUENTE_HOJA_ORIGEN)
 
-    if metabase_cfg:
+    if metabase and llm:
         try:
-            or_metabase = _or_desde_metabase(metabase_cfg, co)
-            if or_metabase:
-                return ResultadoOperador(co=co, or_raw=or_metabase, fuente=FUENTE_METABASE)
-        except MetabaseFallbackPendiente as e:
-            return ResultadoOperador(co=co, or_raw=None, fuente=FUENTE_PENDIENTE_MANUAL, motivo=str(e))
+            or_acta = _or_desde_acta_pdf(metabase, llm, co)
+            if or_acta:
+                return ResultadoOperador(co=co, or_raw=or_acta, fuente=FUENTE_ACTA_PDF)
+        except Exception as e:  # noqa: BLE001 — un fallo de Metabase/LLM acá no debe tumbar la resolución, cae a manual
+            return ResultadoOperador(
+                co=co, or_raw=None, fuente=FUENTE_PENDIENTE_MANUAL,
+                motivo=f'"{co}" no tiene OR en la hoja "Data" y falló la lectura del acta ({e}) — revisión manual.',
+            )
 
     return ResultadoOperador(
         co=co, or_raw=None, fuente=FUENTE_PENDIENTE_MANUAL,
-        motivo=f'"{co}" no tiene operador de red en la hoja "Data" y no hay Metabase configurado — revisión manual.',
+        motivo=f'"{co}" no tiene operador de red en la hoja "Data" ni se pudo extraer de ninguna acta — revisión manual.',
     )

@@ -20,27 +20,23 @@ arquitectura Python modular, desplegable en Vercel. Dos motores:
 | Propuesta de equipos concreta (SKUs de TC/TP/medidor) | ⏳ Siguiente incremento — depende de `ref_capex` y `Normalizaciones_Indirectas`, fuera del alcance confirmado inicial |
 | `tarifa_calculator` / `opex_desde_equipos` (OPEX) | ✅ |
 | `operator_resolver` — hoja "Data" | ✅ |
-| `operator_resolver` — fallback Metabase Card 82534 | 🔴 **Bloqueado, ver abajo** |
+| `operator_resolver` — fallback leyendo la acta más reciente | ✅ |
 
-## ⚠️ Pendiente: parámetro "contrato" de la Card 82534
+## Cómo se resuelve el operador de red (OR)
 
-`operator_resolver._or_desde_metabase()` lanza `MetabaseFallbackPendiente` a propósito. En
-`Codigo.gs` no existe ningún punto donde la Card 82534 se consulte con `contrato` como
-parámetro de filtro — el código original descarga el CSV completo sin parámetros
-(`/api/card/82534/query/csv`) y filtra por `bia_code` en memoria; `contrato` solo aparece
-como **columna del resultado**, nunca como dato de entrada. Además, el propio código deja
-evidencia de que esa instancia de Metabase rechazó dos intentos previos de filtrar del lado
-del servidor (MBQL y SQL nativo vía `/api/dataset`).
+Orden de `resolver_operador_red()`: hoja "Data" (columna C, gid `1682501029`) → si no está
+ahí, se busca en Metabase (Card 82534) el `act_pdf_url` de la acta VIPE/INFR/NOTE/INST más
+reciente del CO, se descarga ese PDF y se le hace UNA pregunta puntual y barata a Claude
+(`or_extractor.py`: `max_tokens=300, effort="low"`, mismo patrón que
+`extraerRatioDeCertificadoCalibracion` en el original) → si nada de eso resuelve, queda
+`fuente="pendiente_manual"` y `/api/opex_resolver` responde HTTP 202 pidiendo que el
+frontend mande `or_manual`.
 
-Antes de implementar `_or_desde_metabase()` de verdad, hace falta confirmar:
-1. Que el endpoint parametrizado (`/api/card/82534/query` con `bia_code` + `contrato`) sí
-   funciona en la instancia real de Metabase.
-2. De dónde sale el valor de `contrato` por CO (no hay ninguna fuente de esto en el código
-   original — ni una hoja, ni otra card).
-
-Mientras tanto, el sistema sigue funcionando: cuando la hoja "Data" no tiene el operador de
-un CO, `resolver_operador_red()` devuelve `fuente="pendiente_manual"` en vez de fallar, y
-`/api/opex_resolver` responde HTTP 202 pidiendo que el frontend mande `or_manual`.
+Se investigó primero si el OR salía de una columna de la Card 82534 vía un parámetro
+`contrato` — resultó que **no**: esa card no trae ninguna columna de operador (confirmado
+tanto en el código original como por Dinovi), el OR solo existe escrito dentro del texto del
+acta. `contrato` sigue sin usarse en este proyecto (no hizo falta una vez se confirmó dónde
+vive realmente el dato).
 
 ## Estructura
 
@@ -58,6 +54,7 @@ un CO, `resolver_operador_red()` devuelve `fuente="pendiente_manual"` en vez de 
     llm_client.py              → wrapper de la API de Anthropic, retry+backoff
   /prompts
     acta_extraction_prompt.py  → ALCANCE_EXTRACTION_PROMPT, verbatim y versionado
+    or_extraction_prompt.py    → pregunta puntual y barata: solo el Operador de Red de un acta
   /validators
     alcance_schema.py           → parseo RESUMEN/JSON + normalización de los 14 campos
   /services
@@ -68,7 +65,8 @@ un CO, `resolver_operador_red()` devuelve `fuente="pendiente_manual"` en vez de 
     clasificador_medida.py           → CAPEX: tipo de medida + reglas de dominio
     tarifa_calculator.py              → OPEX: fuzzy-match + ref_tarifario
     opex_desde_equipos.py             → OPEX: maniobras derivadas del alcance de equipos
-    operator_resolver.py              → OPEX: hoja "Data" -> Metabase (bloqueado) -> manual
+    operator_resolver.py              → OPEX: hoja "Data" -> acta más reciente -> manual
+    or_extractor.py                   → OPEX: extrae el OR de UN acta (módulo puro)
     job_store.py                       → estado intermedio por CO (hoja "PyAsyncJobs")
     wiring.py                          → construye los clientes desde variables de entorno
   utils.py                    → normalizar_codigo / quitar_acentos (compartido)

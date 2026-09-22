@@ -1,10 +1,14 @@
 """POST /api/opex_resolver — resuelve operador + mano de obra de un CO desde su alcance de
-equipos ya calculado (CAPEX). Síncrono: no llama al LLM ni descarga PDFs, solo lee hojas y
-hace fuzzy-match de texto — no hay riesgo de timeout en Vercel.
+equipos ya calculado (CAPEX).
+
+Normalmente es rápido (solo lee la hoja "Data" + hace fuzzy-match de texto), pero si el CO no
+tiene OR en esa hoja, cae a leer el acta más reciente (descarga PDF + 1 llamada puntual y
+barata al LLM, ver operator_resolver.py/or_extractor.py) — ese caso sí puede tardar unos
+segundos, cubierto por el `maxDuration: 30` de vercel.json.
 
 Body esperado: {co, or_manual?, equipos_actuales, filas_equipos}. `or_manual` permite que el
 frontend mande el operador a mano cuando resolver_operador_red devuelve "pendiente_manual"
-(ver operator_resolver.py — la ruta de Metabase está bloqueada hasta confirmar "contrato").
+(el CO no tiene OR en "Data" ni se pudo leer de ninguna acta).
 """
 
 from flask import Flask, jsonify, request
@@ -36,7 +40,7 @@ def opex_resolver():
     if or_manual:
         or_raw, fuente_or = or_manual, "manual"
     else:
-        resultado_or = resolver_operador_red(deps.sheets, None, co)  # metabase=None: bloqueado, ver operator_resolver.py
+        resultado_or = resolver_operador_red(deps.sheets, deps.metabase, deps.llm, co)
         if resultado_or.fuente == FUENTE_PENDIENTE_MANUAL:
             return jsonify({"co": co, "pendiente_operador": True, "motivo": resultado_or.motivo}), 202
         or_raw, fuente_or = resultado_or.or_raw, resultado_or.fuente
