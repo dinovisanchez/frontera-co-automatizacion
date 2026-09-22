@@ -163,6 +163,33 @@ def _resolver_tc_tp(r: _Resolver, tipo_medida_final: str, tipo_medida_actual: st
     return True
 
 
+def _resolver_gabinete(r: _Resolver, tipo_medida_final: str, tipo_medida_actual: str | None, ubicacion: str | None) -> None:
+    """En Directa, "Celda" en CAPEX es en realidad un gabinete de medida (metálico o
+    policarbonato) — confirmado por Dinovi, 2026-09-22: SÍ existe maniobra propia en
+    ref_tarifario ("Instalación gabinete de medida... sobrepuesto interior/exterior"), a
+    diferencia de semidirecta/indirecta donde "Celda" de verdad no tiene ninguna. Se asume
+    montaje "sobrepuesto" (el más común) por defecto — se alerta para que se confirme si en
+    realidad es empotrado o el especial de fachada/poste.
+    """
+    if tipo_medida_final != "directa":
+        return
+    if ubicacion not in ("interior", "exterior"):
+        r.alertas.append('No se conoce la ubicación (interior/exterior) — no se puede tarifar el gabinete, agrégalo a mano.')
+        return
+
+    inst = tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["instalacion", "gabinete", "sobrepuesto", ubicacion])
+    r.agregar_directo(inst, 1, "equipo", f"instalación de gabinete ({ubicacion})")
+    if inst:
+        r.alertas.append('ℹ️ Se asumió gabinete "sobrepuesto" para tarifar la instalación — si en realidad es empotrado o el especial de fachada/poste, ajusta la maniobra a mano en la hoja OPEX.')
+
+    tipo_retiro = tipo_medida_actual or tipo_medida_final
+    if not r.es_instalacion_nueva and tipo_retiro == "directa":
+        # El retiro solo aplica si YA había un gabinete de directa antes (si viene de otro tipo
+        # de medida, nunca hubo gabinete que retirar).
+        ret = tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["retiro", "gabinete", ubicacion])
+        r.agregar_directo(ret, 1, "auto-pareja", f"retiro de gabinete ({ubicacion})")
+
+
 def construir_opex_desde_equipos(
     sheets: SheetsClient, co: str, or_raw: str, tipo_medida_final: str, ubicacion: str | None,
     secciones: dict, es_instalacion_nueva: bool, filas_cable: list[dict] | None = None,
@@ -187,7 +214,10 @@ def construir_opex_desde_equipos(
     r.revision_frontera_si_cambio()
 
     if secciones.get("celda"):
-        alertas.append('"Celda" no tiene ninguna maniobra propia en ref_tarifario — agrégala a mano.')
+        if tipo_medida_final == "directa":
+            _resolver_gabinete(r, tipo_medida_final, tipo_medida_actual, ubicacion)
+        else:
+            alertas.append('"Celda" no tiene ninguna maniobra propia en ref_tarifario — agrégala a mano.')
 
     for f in filas_cable or []:
         texto_cable = f.get("grupo") or f.get("tipo")
