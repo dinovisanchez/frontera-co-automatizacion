@@ -504,8 +504,11 @@
       html += '<option value="">(otro / sin categoría)</option></select>';
       html += '<button class="secondary-btn" id="' + id + '_btnAgregar" style="margin:0;">+ Agregar fila manual</button>';
       html += '</div>';
-      html += '<button class="copy-btn" id="' + id + '_btnCopiarPropuesta">📋 Copiar filas para pegar en "Equipos"</button>';
-      html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">Cada línea: SKU, Cantidad, Tipo (separadas por tabulador) — pega debajo del código de este CO en la hoja "Equipos".</div>';
+      html += '<button id="' + id + '_btnConfirmar">Confirmado — guardar en Equipos</button>';
+      html += '<div class="spinner" id="' + id + '_spinnerGuardar">Guardando…</div>';
+      html += '<div id="' + id + '_resultGuardar"></div>';
+      html += '<button class="copy-btn" id="' + id + '_btnCopiarPropuesta">📋 O solo copiar filas (sin guardar)</button>';
+      html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">"Confirmado" inserta las filas debajo de lo que ya exista de este CO en "Equipos" (o al final si es la primera vez) — nunca sobrescribe nada. El botón de copiar es por si prefieres pegarlas tú mismo.</div>';
       html += '</div>';
 
       html += '<div class="subsection"><h3>Mano de obra (OPEX)</h3>';
@@ -537,18 +540,40 @@
         });
       });
 
-      document.getElementById(id + '_btnCopiarPropuesta').addEventListener('click', function () {
-        var filas = estado.filas
+      /** Lee el estado ACTUAL de las filas editables (post-exclusión), como objetos o como
+       *  líneas TSV según `comoTexto` — se reutiliza tanto para guardar como para copiar. */
+      function leerFilasVisibles(comoTexto) {
+        return estado.filas
           .filter(function (f) { return !document.getElementById(f.idExcluir).checked; })
           .map(function (f) {
-            return [
-              document.getElementById(f.idSku).value.trim(),
-              parseInt(document.getElementById(f.idCantidad).value, 10) || 1,
-              document.getElementById(f.idTipo).value.trim()
-            ].join('\t');
-          });
+            var sku = document.getElementById(f.idSku).value.trim();
+            var cantidad = parseInt(document.getElementById(f.idCantidad).value, 10) || 1;
+            var tipo = document.getElementById(f.idTipo).value.trim();
+            return comoTexto ? [sku, cantidad, tipo].join('\t') : { sku: sku, cantidad: cantidad, tipo: tipo };
+          })
+          .filter(function (f) { return comoTexto ? f.split('\t')[0] : f.sku; });
+      }
+
+      document.getElementById(id + '_btnCopiarPropuesta').addEventListener('click', function () {
+        var filas = leerFilasVisibles(true);
         if (!filas.length) { alert('No hay ninguna fila con SKU para copiar.'); return; }
         copiarTexto(filas.join('\n'), this);
+      });
+
+      document.getElementById(id + '_btnConfirmar').addEventListener('click', function () {
+        var filas = leerFilasVisibles(false);
+        if (!filas.length) { alert('No hay ninguna fila con SKU para guardar.'); return; }
+
+        setRunning(id + '_btnConfirmar', id + '_spinnerGuardar', true);
+        var destinoGuardar = document.getElementById(id + '_resultGuardar');
+        destinoGuardar.innerHTML = '';
+        fetchJSON('POST', '/api/guardar_alcance', { co: res.co, filas: filas }).then(function (r) {
+          setRunning(id + '_btnConfirmar', id + '_spinnerGuardar', false);
+          destinoGuardar.innerHTML = '<div class="line ok">✓ Guardado (' + r.guardadas.length + ' fila(s)) — <a href="' + r.hoja_url + '" target="_blank">ver hoja Equipos</a></div>';
+        }).catch(function (err) {
+          setRunning(id + '_btnConfirmar', id + '_spinnerGuardar', false);
+          destinoGuardar.innerHTML = renderError(err);
+        });
       });
 
       document.getElementById(id + '_btnOpex').addEventListener('click', function () {
