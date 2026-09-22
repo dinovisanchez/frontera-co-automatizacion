@@ -687,12 +687,12 @@
         var btnGuardar = document.getElementById(idBtnGuardar);
         if (btnGuardar) btnGuardar.addEventListener('click', function () {
           var filas = opex.filas.map(function (f) {
-            return { maniobra: f.maniobra, cantidad: f.cantidad, costo_unitario: f.costoUnitarioMO, costo_total: f.costoTotalMO };
+            return { maniobra: f.maniobra, cantidad: f.cantidad };
           });
           setRunning(idBtnGuardar, idSpinnerGuardar, true);
           var destino = document.getElementById(idResultGuardar);
           destino.innerHTML = '';
-          fetchJSON('POST', '/api/guardar_opex', { filas: filas }).then(function (r) {
+          fetchJSON('POST', '/api/guardar_opex', { co: opex.co, operador: opex.operador, filas: filas }).then(function (r) {
             setRunning(idBtnGuardar, idSpinnerGuardar, false);
             destino.innerHTML = '<div class="line ok">✓ Guardado (' + r.guardadas.length + ' fila(s)) — <a href="' + r.hoja_url + '" target="_blank">ver hoja OPEX</a></div>';
           }).catch(function (err) {
