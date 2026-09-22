@@ -357,7 +357,20 @@
         }
 
         if (!dictamen.sinActas) {
-          await asegurarActasCompletas(co, function (msg) { spinnerEl.textContent = msg; });
+          try {
+            await asegurarActasCompletas(co, function (msg) { spinnerEl.textContent = msg; });
+          } catch (e) {
+            // Sin ninguna acta legible (no es que el CO no exista) — no bloquear: seguir en
+            // modo "sin actas" usando hoja maestra / Data cambio NT / Normalizaciones_
+            // Indirectas, igual que si hubieras marcado la casilla a mano (Dinovi, 2026-09-22:
+            // "esta en la sheet de quinquenales" aunque no haya acta con PDF legible).
+            if (/no tiene ninguna acta/i.test(e.message || '')) {
+              dictamen.sinActas = true;
+              spinnerEl.textContent = 'Sin actas legibles — usando hoja maestra / Data cambio NT en su lugar…';
+            } else {
+              throw e;
+            }
+          }
         }
         spinnerEl.textContent = 'Calculando propuesta (CAPEX)…';
         var res = await fetchJSON('POST', '/api/analizar_alcance', { co: co, dictamen: dictamen });
@@ -406,9 +419,20 @@
       var texto = document.getElementById('cosAlcance').value;
       var cos = texto.split(/[\s,;]+/).map(function (s) { return s.trim(); }).filter(Boolean);
       if (!cos.length) { alert('Escribe al menos un código CO.'); return; }
-      document.getElementById('resultadosAlcance').innerHTML = '';
-      estadoAnalisisCOs = {};
-      cos.forEach(function (co) { renderFormularioDictamen(co); });
+      // Agrega tarjetas nuevas SIN borrar las que ya existen (Dinovi, 2026-09-22: "aun no me
+      // deja agregar otro capex" — antes esto vaciaba resultadosAlcance en cada clic, así que
+      // escribir un CO adicional borraba el trabajo ya hecho de los anteriores). Si un CO ya
+      // tiene tarjeta, se deja como está — no se reinicia su dictamen ni su resultado.
+      var yaExisten = 0;
+      cos.forEach(function (co) {
+        var id = 'alcance_' + co.replace(/[^A-Za-z0-9]/g, '');
+        if (document.getElementById(id)) { yaExisten++; return; }
+        renderFormularioDictamen(co);
+      });
+      if (yaExisten) {
+        var resumenEl = document.getElementById('resumenAnalisisTodos');
+        if (resumenEl && !resumenEl.textContent) resumenEl.textContent = yaExisten + ' CO ya tenía tarjeta — se dejó como estaba.';
+      }
     });
 
     document.getElementById('btnAnalizarTodos').addEventListener('click', function () {
