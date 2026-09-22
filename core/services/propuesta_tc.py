@@ -38,7 +38,10 @@ def resolver_propuesta_tc(ctx: dict, propuesta: list[dict], alertas: list[str]) 
                 alertas.append(f'⚠️ El acta declara TC "{spec_relacion_tc}" pero "{resuelto["fuente"]}" dice "{resuelto["item"]["tc"]["ratio"]}" — se usó la de la hoja (más confiable, calculada por ingeniería), pero confirma cuál es la correcta antes de guardar; la diferencia puede ser grande.')
         texto_original = resuelto.get("texto_original")
         propuesta.append({
-            "grupo": "TC", "cantidad": resuelto.get("cantidad") or ctx["elementos"], "tipo": "Transformador de corriente",
+            # El número de fases del acta (ctx["elementos"]) manda sobre la "Cantidad" de la
+            # hoja para TC/TP — confirmado por Dinovi, 2026-09-22 (bifásico=2, trifásico=3);
+            # la hoja solo se usa si el acta no dice nada. Bornera/Cable SÍ priorizan la hoja.
+            "grupo": "TC", "cantidad": ctx["elementos"] or resuelto.get("cantidad"), "tipo": "Transformador de corriente",
             "razon": f'Según "{resuelto["fuente"]}" (ya calculado para este CO)' + (f': "{texto_original}"' if texto_original else "") + ".",
             "sku": resuelto["item"]["sku"], "costo_estimado": resuelto["item"]["costo"], "alternativas": [], "requiere_confirmacion": False,
         })

@@ -20,7 +20,9 @@ def resolver_propuesta_tp(ctx: dict, propuesta: list[dict], alertas: list[str]) 
     if resuelto:
         texto_original = resuelto.get("texto_original")
         propuesta.append({
-            "grupo": "TP", "cantidad": resuelto.get("cantidad") or ctx["elementos"], "tipo": "Transformador de potencial",
+            # Mismo criterio que TC: el número de fases del acta manda sobre la "Cantidad" de
+            # la hoja (Dinovi, 2026-09-22) — la hoja es solo respaldo si el acta no dice nada.
+            "grupo": "TP", "cantidad": ctx["elementos"] or resuelto.get("cantidad"), "tipo": "Transformador de potencial",
             "razon": f'Según "{resuelto["fuente"]}" (ya calculado para este CO)' + (f': "{texto_original}"' if texto_original else "") + ".",
             "sku": resuelto["item"]["sku"], "costo_estimado": resuelto["item"]["costo"], "alternativas": [], "requiere_confirmacion": False,
         })
