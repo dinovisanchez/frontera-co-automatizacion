@@ -17,19 +17,19 @@ ref_tarifario y sus 72 maniobras están armadas por tipo de medida × ubicación
 categoría de equipo suelta — ver opex_desde_equipos.py.
 """
 
-from flask import Flask, jsonify, request
+from flask import Blueprint, jsonify, request
 
 from core.services.opex_desde_equipos import construir_opex_desde_equipos
 from core.services.operator_resolver import FUENTE_PENDIENTE_MANUAL, resolver_operador_red
 from core.services.wiring import construir_dependencias
 from core.utils import normalizar_codigo
 
-app = Flask(__name__)
+bp = Blueprint("opex_resolver", __name__)
 
 _TIPOS_MEDIDA_VALIDOS = {"directa", "semidirecta", "indirecta"}
 
 
-@app.post("/api/opex_resolver")
+@bp.post("/api/opex_resolver")
 def opex_resolver():
     body = request.get_json(force=True, silent=True) or {}
     co_raw = body.get("co")

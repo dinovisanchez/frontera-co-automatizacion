@@ -5,18 +5,18 @@ Red de seguridad para jobs que quedaron "en_progreso" sin que nadie siga llamand
 job pendiente en cada tick del cron, para que eventualmente todos terminen solos.
 """
 
-from flask import Flask, jsonify
+from flask import Blueprint, jsonify
 
 from core.services import alcance_combiner
 from core.services.job_store import ESTADO_EN_PROGRESO
 from core.services.wiring import construir_dependencias
 
-app = Flask(__name__)
+bp = Blueprint("cron_reintentos", __name__)
 
 MAX_JOBS_POR_TICK = 10  # límite de costo/tiempo por invocación del cron, no de corrección
 
 
-@app.get("/api/cron_reintentos")
+@bp.get("/api/cron_reintentos")
 def cron_reintentos():
     deps = construir_dependencias(requiere_metabase=False)
     cos_pendientes = deps.jobs.listar_cos_por_estado(ESTADO_EN_PROGRESO)[:MAX_JOBS_POR_TICK]

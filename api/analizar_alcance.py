@@ -7,14 +7,14 @@ Body: {"co": "...", "dictamen": {clasificacion, capacidadIncierta?, sinActas?,
 seccionesForzadas?, detalleFaltante?}} — mismo JSON que ya arma Index.html en el original.
 """
 
-from flask import Flask, jsonify, request
+from flask import Blueprint, jsonify, request
 
 from core.services.alcance_provisional import analizar_alcance_provisional
 from core.services.job_store import ESTADO_COMPLETO
 from core.services.wiring import construir_dependencias
 from core.utils import normalizar_codigo
 
-app = Flask(__name__)
+bp = Blueprint("analizar_alcance", __name__)
 
 
 def _acta_resultado_desde_job(estado) -> dict | None:
@@ -41,7 +41,7 @@ def _acta_resultado_desde_job(estado) -> dict | None:
     }
 
 
-@app.post("/api/analizar_alcance")
+@bp.post("/api/analizar_alcance")
 def analizar_alcance():
     body = request.get_json(force=True, silent=True) or {}
     co_raw = body.get("co")

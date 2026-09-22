@@ -5,17 +5,17 @@ El frontend hace polling: llama esto en un loop corto hasta que la respuesta tra
 muy por debajo de cualquier maxDuration razonable de Vercel.
 """
 
-from flask import Flask, jsonify, request
+from flask import Blueprint, jsonify, request
 
 from core.services import alcance_combiner
 from core.services.job_store import ESTADO_COMPLETO
 from core.services.wiring import construir_dependencias
 from core.utils import normalizar_codigo
 
-app = Flask(__name__)
+bp = Blueprint("actas_step", __name__)
 
 
-@app.post("/api/actas_step")
+@bp.post("/api/actas_step")
 def actas_step():
     body = request.get_json(force=True, silent=True) or {}
     co_raw = body.get("co")

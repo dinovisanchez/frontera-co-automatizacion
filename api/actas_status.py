@@ -4,15 +4,15 @@
 liste qué jobs siguen en_progreso.
 """
 
-from flask import Flask, jsonify, request
+from flask import Blueprint, jsonify, request
 
 from core.services.wiring import construir_dependencias
 from core.utils import normalizar_codigo
 
-app = Flask(__name__)
+bp = Blueprint("actas_status", __name__)
 
 
-@app.get("/api/actas_status")
+@bp.get("/api/actas_status")
 def actas_status():
     co_raw = request.args.get("co")
     if not co_raw:

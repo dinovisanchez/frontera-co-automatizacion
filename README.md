@@ -126,7 +126,8 @@ completar el spec.
 ## Estructura
 
 ```
-/api                      → endpoints serverless de Vercel (uno por responsabilidad)
+/api                      → endpoints serverless de Vercel (uno por responsabilidad, ver nota abajo)
+  index.py                  → entrypoint único que registra los 6 Blueprints (ver nota abajo)
   actas_start.py            → crea el job de actas de un CO y procesa la primera
   actas_step.py             → procesa UNA acta más del job (el frontend hace polling)
   actas_status.py           → progreso/resultado actual, sin avanzar el job
@@ -173,6 +174,16 @@ completar el spec.
   settings.py                → carga de variables de entorno, sin defaults inventados
 /tests                       → mocks de LLM/Metabase/Sheets, sin dependencias reales
 ```
+
+## Por qué `api/index.py` (entrypoint único) y no un `app = Flask(__name__)` por archivo
+
+El diseño original tenía una app Flask independiente por archivo en `/api`. Al desplegar,
+Vercel detecta Flask como "framework" en cuanto ve más de un `app = Flask(__name__)` bajo
+`/api/*.py`, y en ese modo exige un único entrypoint (falla con
+`No Flask entrypoint found in default locations`). Por eso cada archivo expone un
+`Blueprint` (`bp = Blueprint(...)`) en vez de su propia app, `api/index.py` los registra
+todos en una sola `Flask(__name__)`, y `pyproject.toml` declara
+`[tool.vercel] entrypoint = "api.index:app"`. Las rutas (`/api/actas_start`, etc.) no cambian.
 
 ## Por qué "una acta por invocación" (y no un endpoint que procese todo el CO)
 

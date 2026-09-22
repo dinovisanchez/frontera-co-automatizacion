@@ -6,16 +6,16 @@ Vercel solo hace un paso. El frontend sigue llamando /api/actas_step hasta que
 `completo: true`, o lo hace cron_reintentos.py si el frontend se desconecta.
 """
 
-from flask import Flask, jsonify, request
+from flask import Blueprint, jsonify, request
 
 from core.services import alcance_combiner
 from core.services.wiring import construir_dependencias
 from core.utils import normalizar_codigo
 
-app = Flask(__name__)
+bp = Blueprint("actas_start", __name__)
 
 
-@app.post("/api/actas_start")
+@bp.post("/api/actas_start")
 def actas_start():
     body = request.get_json(force=True, silent=True) or {}
     co_raw = body.get("co")
