@@ -1,2 +1,14 @@
+[project]
+name = "frontera-co-automatizacion"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "flask==3.1.0",
+    "requests==2.32.3",
+    "gspread==6.1.4",
+    "google-auth==2.35.0",
+    "google-api-python-client==2.149.0",
+]
+
 [tool.vercel]
 entrypoint = "api.index:app"
