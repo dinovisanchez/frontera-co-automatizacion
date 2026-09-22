@@ -670,7 +670,14 @@
         if (!res.secciones || !res.secciones[key]) return false;
         var filasDeCategoria = estado.filas.filter(function (f) { return categoriaDesdeGrupo(f.grupo) === key; });
         if (!filasDeCategoria.length) return true;
-        return filasDeCategoria.some(function (f) { return !document.getElementById(f.idExcluir).checked; });
+        return filasDeCategoria.some(function (f) {
+          var excluida = document.getElementById(f.idExcluir).checked;
+          // Borrar el SKU (dejarlo vacío) también cuenta como "no se va a instalar" — no solo
+          // marcar la casilla "excluir" (Dinovi, 2026-09-22: dejaba el SKU vacío en vez de
+          // marcar excluir, y la maniobra igual salía en OPEX).
+          var sku = document.getElementById(f.idSku).value.trim();
+          return !excluida && sku;
+        });
       }
 
       document.getElementById(id + '_btnOpex').addEventListener('click', function () {
