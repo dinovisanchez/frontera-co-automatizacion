@@ -94,3 +94,9 @@ NORMINDIRECTAS_GID = 821330837
 # que sirve cuando no hay ninguna acta disponible.
 CONTROL_SHEET_ID = "13EDCBENSRxZtNM3BhbKB9ghHejZKCWa3lcWfoWZV05A"
 MAESTRO_GID = 655267373
+
+# Unidad compartida "Alcance" en Drive, creada el 2026-09-22 — el archivo temporal de OCR
+# (acta_ocr.py) se sube ahí en vez de "Mi unidad": una cuenta de servicio no tiene cuota de
+# almacenamiento propia y falla con "storageQuotaExceeded" si se crea el archivo sin unidad
+# compartida. No es secreto (es solo un ID de carpeta), así que va fijo, no por env var.
+DRIVE_OCR_UNIDAD_COMPARTIDA_ID = "0ADn7xXVNGNvtUk9PVA"

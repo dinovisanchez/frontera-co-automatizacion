@@ -18,7 +18,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
-from config.settings import GoogleSheetsConfig
+from config.settings import DRIVE_OCR_UNIDAD_COMPARTIDA_ID, GoogleSheetsConfig
 
 _SCOPES_DRIVE = ["https://www.googleapis.com/auth/drive"]
 _MIN_CARACTERES_UTILES = 200  # igual que el original: menos que esto = "escaneo de mala calidad"
@@ -42,10 +42,14 @@ def ocr_texto_desde_bytes(pdf_bytes: bytes, cfg: GoogleSheetsConfig) -> OcrResul
     archivo_id = None
     try:
         media = MediaIoBaseUpload(io.BytesIO(pdf_bytes), mimetype="application/pdf", resumable=False)
-        metadata = {"name": "acta_ocr_temporal.pdf", "mimeType": "application/vnd.google-apps.document"}
+        metadata = {
+            "name": "acta_ocr_temporal.pdf",
+            "mimeType": "application/vnd.google-apps.document",
+            "parents": [DRIVE_OCR_UNIDAD_COMPARTIDA_ID],
+        }
         creado = (
             drive.files()
-            .create(body=metadata, media_body=media, ocrLanguage="es", fields="id")
+            .create(body=metadata, media_body=media, ocrLanguage="es", fields="id", supportsAllDrives=True)
             .execute()
         )
         archivo_id = creado["id"]
@@ -68,6 +72,6 @@ def ocr_texto_desde_bytes(pdf_bytes: bytes, cfg: GoogleSheetsConfig) -> OcrResul
     finally:
         if archivo_id:
             try:
-                drive.files().delete(fileId=archivo_id).execute()
+                drive.files().delete(fileId=archivo_id, supportsAllDrives=True).execute()
             except Exception:  # noqa: BLE001 — limpieza best-effort, igual que el original
                 pass
