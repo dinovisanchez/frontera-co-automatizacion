@@ -1,7 +1,7 @@
 """Escribe la propuesta ya confirmada por el usuario en la hoja "Equipos" — puerto de
-guardarAlcanceProvisional (Codigo.gs). Inserta las filas nuevas justo debajo de las filas que
-ya existan para este CO (mismo criterio que "encontrar el código y pegar cada uno debajo del
-otro"); si el CO no tiene ninguna fila previa ahí, se usa la última fila de la hoja como base.
+guardarAlcanceProvisional (Codigo.gs). Primero rellena los "huecos" que ya existan para este
+CO (filas con cliente/OR/maniobra pero SKU vacío, ej. de un intento anterior); lo que sobre se
+inserta justo debajo de la última fila de este CO (o al final de la hoja si no tenía ninguna).
 
 La hoja real tiene 9 columnas, no 7: H/I son fórmulas de costo (VLOOKUP contra ref_capex) que
 dependen del SKU de esa misma fila — confirmado por Dinovi, 2026-09-22 (antes de este fix, esas
@@ -39,6 +39,12 @@ def guardar_filas_equipos(sheets: SheetsClient, co_raw: str, filas: list[dict], 
     existentes = leer_equipos_existentes(sheets, co)
     hoja = sheets.hoja_por_nombre(SHEET_EQUIPOS)
 
+    # Huecos: filas que ya existían para este CO con SKU vacío (ej. de un guardado anterior a
+    # medias) — se rellenan ANTES de insertar nada nuevo, igual que el original (Dinovi,
+    # 2026-09-22: "sobre la que hay dejas un sku [vacío]" — no estaba reutilizando esas filas).
+    huecos = sorted(f["fila"] for f in existentes if not f.get("sku"))
+    idx_hueco = 0
+
     # OJO: hoja.row_count es el tamaño del GRID (a menudo con relleno de filas vacías, ej.
     # 1000), no la última fila con contenido real — usarlo como base dejaba un hueco enorme
     # de filas en blanco antes de la fila realmente guardada cuando el CO no tenía filas
@@ -46,13 +52,18 @@ def guardar_filas_equipos(sheets: SheetsClient, co_raw: str, filas: list[dict], 
     fila_base = max((f["fila"] for f in existentes), default=None) or len(hoja.col_values(1))
     guardadas = []
     for f in filas:
-        fila_nueva = fila_base + 1
-        hoja.insert_rows([[""] * _NUM_COLUMNAS_EQUIPOS], row=fila_nueva, inherit_from_before=True)
-        if fila_base >= 1:
-            sheets.copiar_fila(hoja, fila_origen=fila_base, fila_destino=fila_nueva, num_columnas=_NUM_COLUMNAS_EQUIPOS)
         valores_fila = [co, origen["cliente"], origen["or"], maniobra, f["sku"], f.get("cantidad", 1), f.get("tipo", "")]
-        hoja.update(f"A{fila_nueva}:G{fila_nueva}", [valores_fila], value_input_option="USER_ENTERED")
+        if idx_hueco < len(huecos):
+            fila_destino = huecos[idx_hueco]
+            idx_hueco += 1
+            hoja.update(f"A{fila_destino}:G{fila_destino}", [valores_fila], value_input_option="USER_ENTERED")
+        else:
+            fila_nueva = fila_base + 1
+            hoja.insert_rows([[""] * _NUM_COLUMNAS_EQUIPOS], row=fila_nueva, inherit_from_before=True)
+            if fila_base >= 1:
+                sheets.copiar_fila(hoja, fila_origen=fila_base, fila_destino=fila_nueva, num_columnas=_NUM_COLUMNAS_EQUIPOS)
+            hoja.update(f"A{fila_nueva}:G{fila_nueva}", [valores_fila], value_input_option="USER_ENTERED")
+            fila_base = fila_nueva
         guardadas.append(valores_fila)
-        fila_base = fila_nueva
 
     return {"guardadas": guardadas, "hoja_url": hoja.url}
