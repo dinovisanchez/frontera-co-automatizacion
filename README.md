@@ -186,9 +186,19 @@ junto a `PRESUPUESTO_MS_ACTAS`, Codigo.gs línea 3252-3259) — el tiempo por ac
 Por eso `/api/actas_start` y `/api/actas_step` procesan **una sola acta por invocación**,
 guardando el progreso combinado en la hoja `PyAsyncJobs` (mismo principio que la hoja
 `AsyncJobs` que el propio Apps Script ya usaba para su patrón de job asíncrono). El frontend
-hace polling a `/api/actas_step` hasta recibir `completo: true`; `/api/cron_reintentos` (cada
-5 min, ver `vercel.json`) es la red de seguridad para jobs que quedaron a medias si el
-frontend se desconecta.
+hace polling a `/api/actas_step` hasta recibir `completo: true`; `/api/cron_reintentos` es la
+red de seguridad para jobs que quedaron a medias si el frontend se desconecta.
+
+**Corriendo en plan Hobby** (confirmado, 2026-09-23: sin acceso a Pro): el cron de
+`vercel.json` quedó en `"0 8 * * *"` (una vez al día) — Vercel rechaza cualquier frecuencia
+mayor en Hobby con un error explícito al desplegar. Es una degradación aceptada: la red de
+seguridad revisa jobs colgados una vez al día en vez de cada 5 min; el polling del frontend
+sigue siendo el mecanismo principal, esto es solo el respaldo. Sobre `maxDuration`: Vercel no
+dio ningún error de validación al respecto (solo del cron), así que se dejó tal cual —
+confírmalo en el primer `vercel --prod` real; si sí llega a fallar, hay que bajarlo y aceptar
+que actas muy grandes (modo imagen, PDFs pesados) pueden fallar por timeout en vez de
+completarse — la fila entera de actas pendientes queda intacta para reintentar más tarde, no
+se pierde progreso ya combinado.
 
 `/api/opex_resolver` sí es síncrono: no llama al LLM ni descarga nada, solo lee hojas y hace
 fuzzy-match de texto en memoria — no hay riesgo de timeout ahí.
@@ -216,13 +226,11 @@ vercel dev
 1. `vercel link` (o `vercel` la primera vez) en la raíz del repo.
 2. Configura las variables de entorno en el proyecto de Vercel (Settings → Environment
    Variables), con los mismos nombres de `.env.example` — nunca las subas al repo.
-3. Los `maxDuration` de 60s en `vercel.json` para `actas_start`/`actas_step`/`cron_reintentos`
-   requieren como mínimo el plan **Pro** de Vercel (Hobby tope 10s no alcanza ni para una
-   sola acta en modo imagen).
-4. `vercel --prod`.
+3. `vercel --prod`.
 
 El cron de `/api/cron_reintentos` se activa solo con el despliegue — no hace falta
-configurarlo aparte de lo que ya está en `vercel.json`.
+configurarlo aparte de lo que ya está en `vercel.json`. En plan Hobby corre una vez al día
+(ver nota arriba); en Pro se puede subir la frecuencia editando el `schedule`.
 
 ## Cuenta de servicio de Google
 

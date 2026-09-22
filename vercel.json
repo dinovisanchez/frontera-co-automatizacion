@@ -10,7 +10,7 @@
   "crons": [
     {
       "path": "/api/cron_reintentos",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 8 * * *"
     }
   ]
 }
