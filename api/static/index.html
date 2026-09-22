@@ -193,6 +193,22 @@
     // ---------- Motor de actas: /api/actas_start + /api/actas_step hasta completo ----------
     function jobCompleto(e) { return !!e && (e.completo === true || e.estado === 'completo'); }
 
+    /** El paso de una acta puede pasarse del límite de 60s de Vercel (Hobby) con un PDF
+     *  pesado — el progreso YA hecho queda guardado en el job, así que reintentar el MISMO
+     *  paso (no reiniciar el job) normalmente resume donde quedó. 2 reintentos, no infinito. */
+    async function postConReintento(url, body, onReintento) {
+      var intentos = 0;
+      while (true) {
+        try {
+          return await fetchJSON('POST', url, body);
+        } catch (e) {
+          intentos++;
+          if (intentos > 2) throw e;
+          onReintento(e, intentos);
+        }
+      }
+    }
+
     async function asegurarActasCompletas(co, onProgreso) {
       var estado = null;
       try {
@@ -202,14 +218,18 @@
       }
       if (!estado || estado.estado === 'error') {
         onProgreso('Iniciando lectura de actas…');
-        estado = await fetchJSON('POST', '/api/actas_start', { co: co });
+        estado = await postConReintento('/api/actas_start', { co: co }, function (e, intento) {
+          onProgreso('Se pasó del tiempo iniciando (intento ' + intento + ') — reintentando…');
+        });
       }
       var vueltas = 0;
-      while (!jobCompleto(estado) && vueltas < 10) {
+      while (!jobCompleto(estado) && vueltas < 12) {
         vueltas++;
         var pendientes = (estado.actas_pendientes != null) ? estado.actas_pendientes : '?';
         onProgreso('Leyendo actas… (' + pendientes + ' pendiente(s), paso ' + vueltas + ')');
-        estado = await fetchJSON('POST', '/api/actas_step', { co: co });
+        estado = await postConReintento('/api/actas_step', { co: co }, function (e, intento) {
+          onProgreso('Esa acta tardó más de lo normal (intento ' + intento + ') — reintentando, el progreso ya hecho no se pierde…');
+        });
       }
       if (!jobCompleto(estado)) {
         throw new Error('El análisis de actas no terminó tras varios intentos — dale "Analizar" de nuevo, sigue donde quedó.');
