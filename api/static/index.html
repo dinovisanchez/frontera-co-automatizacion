@@ -608,6 +608,7 @@
         var body = {
           co: res.co,
           tipo_medida_final: d.tipo_medida_final,
+          tipo_medida_actual: d.tipo_medida_actual,
           ubicacion: (res.spec || {}).ubicacion_medida || null,
           secciones: res.secciones || {},
           es_instalacion_nueva: document.getElementById(id + '_instalacionNueva').checked,

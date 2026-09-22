@@ -90,19 +90,38 @@ class _Resolver:
             self._agregar(tc.buscar_maniobra_por_palabras(self.maniobras_reales, ["calibracion", "sitio", "tcs", "tps", "mt"]), 6, "extra-fija", "calibración en sitio TCs-TPs MT")
 
 
-def _resolver_medidor(r: _Resolver, tipo_medida: str, ubicacion: str | None, con_bloque: bool) -> None:
+def _palabras_medidor(tipo_medida: str, ubicacion: str, accion: str, con_bloque: bool) -> list[str]:
+    """`accion`: "instalacion" | "retiro" — mismas palabras clave de con_contraparte (cada
+    combinación verificada fila por fila contra la hoja real), separadas por acción para poder
+    mezclar un tipo de medida en instalación y OTRO en retiro (cambio de nivel de tensión: se
+    instala lo nuevo, pero se retira lo que había antes). OJO: "retiro semidirecta con bloque"
+    NO lleva ubicación en la hoja real (a diferencia de todas las demás) — no es un descuido."""
+    if tipo_medida == "directa":
+        return [accion, "medida", "directa", ubicacion]
+    if tipo_medida == "semidirecta":
+        if con_bloque:
+            return [accion, "semidirecta", "bloque"] if accion == "retiro" else [accion, "semidirecta", "bloque", ubicacion]
+        return [accion, "medidor", "semidirecta", ubicacion]
+    return [accion, "indirecta", ubicacion]  # indirecta siempre trae medidor+bloque juntos
+
+
+def _resolver_medidor(r: _Resolver, tipo_medida_final: str, tipo_medida_actual: str | None, ubicacion: str | None, con_bloque: bool) -> None:
     if ubicacion not in ("interior", "exterior"):
         r.alertas.append('No se conoce la ubicación (interior/exterior) de la medida — no se puede tarifar el medidor, agrégalo a mano.')
         return
-    if tipo_medida == "directa":
-        r.con_contraparte(["instalacion", "medida", "directa", ubicacion], ["retiro", "medida", "directa", ubicacion], 1, "medidor (directa)")
-    elif tipo_medida == "semidirecta":
-        if con_bloque:
-            r.con_contraparte(["instalacion", "semidirecta", "bloque", ubicacion], ["retiro", "semidirecta", "bloque"], 1, "medidor + bloque (semidirecta)")
-        else:
-            r.con_contraparte(["instalacion", "medidor", "semidirecta", ubicacion], ["retiro", "medidor", "semidirecta", ubicacion], 1, "medidor (semidirecta)", excluidas_inst=["bloque"])
-    elif tipo_medida == "indirecta":
-        r.con_contraparte(["instalacion", "indirecta", ubicacion], ["retiro", "indirecta", ubicacion], 1, "medidor + bloque de pruebas (indirecta)")
+
+    excluidas_inst = ["bloque"] if (tipo_medida_final == "semidirecta" and not con_bloque) else None
+    inst = tc.buscar_maniobra_por_palabras(r.maniobras_reales, _palabras_medidor(tipo_medida_final, ubicacion, "instalacion", con_bloque), excluidas_inst)
+    r.agregar_directo(inst, 1, "equipo", f"instalación de medidor ({tipo_medida_final})")
+
+    if r.es_instalacion_nueva:
+        return
+    # Cambio de nivel de tensión (reclasificado): lo que se RETIRA es el equipo del tipo de
+    # medida ACTUAL (antes del cambio), no del final — ej. si hoy es directa y pasa a
+    # indirecta, el retiro es "Retiro directa", no "Retiro indirecta" (Dinovi, 2026-09-22).
+    tipo_retiro = tipo_medida_actual or tipo_medida_final
+    ret = tc.buscar_maniobra_por_palabras(r.maniobras_reales, _palabras_medidor(tipo_retiro, ubicacion, "retiro", con_bloque))
+    r.agregar_directo(ret, 1, "auto-pareja", f"retiro de medidor ({tipo_retiro})")
 
 
 def _resolver_tc_tp(r: _Resolver, tipo_medida: str, ubicacion: str | None, hay_tc: bool, hay_tp: bool) -> bool:
@@ -126,14 +145,19 @@ def _resolver_tc_tp(r: _Resolver, tipo_medida: str, ubicacion: str | None, hay_t
 def construir_opex_desde_equipos(
     sheets: SheetsClient, co: str, or_raw: str, tipo_medida_final: str, ubicacion: str | None,
     secciones: dict, es_instalacion_nueva: bool, filas_cable: list[dict] | None = None,
+    tipo_medida_actual: str | None = None,
 ) -> ResultadoOpexDesdeEquipos:
+    """`tipo_medida_actual`: tipo de medida ANTES del cambio (ej. "directa"/"semidirecta") —
+    solo importa cuando difiere de `tipo_medida_final` (cambio de nivel de tensión/Art.19):
+    ahí el retiro es del equipo que había, no del que se va a instalar. Si no se pasa, se
+    asume igual al final (mismo comportamiento que antes de este parámetro)."""
     tarifario = tc.obtener_ref_tarifario_cacheado(sheets)
     operador = tc.normalizar_operador_tarifario(or_raw)
     alertas: list[str] = []
     r = _Resolver(tarifario["maniobras"], es_instalacion_nueva, alertas)
 
     if secciones.get("medidor") or secciones.get("bloque_pruebas"):
-        _resolver_medidor(r, tipo_medida_final, ubicacion, con_bloque=bool(secciones.get("bloque_pruebas")))
+        _resolver_medidor(r, tipo_medida_final, tipo_medida_actual, ubicacion, con_bloque=bool(secciones.get("bloque_pruebas")))
 
     hubo_mt = _resolver_tc_tp(r, tipo_medida_final, ubicacion, bool(secciones.get("tc")), bool(secciones.get("tp")))
     if hubo_mt:

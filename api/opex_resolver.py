@@ -9,7 +9,9 @@ Body esperado:
   "ubicacion": "interior",            # "interior" | "exterior" | null — de spec.ubicacion_medida
   "secciones": {"medidor": true, "tc": true, "tp": true, "bloque_pruebas": true, "celda": false},
   "es_instalacion_nueva": false,      # true si no hay equipo previo que retirar/desmontar
-  "filas_cable": [{"grupo": "Cable señal", "cantidad": 1}]  # opcional — cable no tiene maniobra propia, solo fuzzy-match
+  "filas_cable": [{"grupo": "Cable señal", "cantidad": 1}],  # opcional — cable no tiene maniobra propia, solo fuzzy-match
+  "tipo_medida_actual": "directa"     # opcional — solo si hubo cambio de nivel de tensión (Art.19):
+                                       # el retiro del medidor es del tipo ACTUAL, no del final
 }
 
 Por qué este contrato (no "filas_equipos" genérico como antes): se verificó la hoja real de
@@ -45,6 +47,7 @@ def opex_resolver():
     es_instalacion_nueva = bool(body.get("es_instalacion_nueva", False))
     ubicacion = body.get("ubicacion")
     filas_cable = body.get("filas_cable") or []
+    tipo_medida_actual = body.get("tipo_medida_actual")
 
     deps = construir_dependencias(requiere_metabase=False)
 
@@ -58,7 +61,8 @@ def opex_resolver():
         or_raw, fuente_or = resultado_or.or_raw, resultado_or.fuente
 
     resultado = construir_opex_desde_equipos(
-        deps.sheets, co, or_raw, tipo_medida_final, ubicacion, secciones, es_instalacion_nueva, filas_cable
+        deps.sheets, co, or_raw, tipo_medida_final, ubicacion, secciones, es_instalacion_nueva, filas_cable,
+        tipo_medida_actual=tipo_medida_actual,
     )
 
     return jsonify({
