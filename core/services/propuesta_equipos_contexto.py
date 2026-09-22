@@ -8,6 +8,16 @@ capacidad que no es de este cliente), y la clase de tensión a usar para buscar 
 from core.services.catalogo_capex import normalizar_medidor_contra_catalogo, normalizar_sku_contra_catalogo
 from core.services.resolucion_tc_tp import preferir_con_cable_por_or
 
+# Confirmado por Dinovi, 2026-09-22: por encima de este umbral se duplica medidor y bloque de
+# pruebas (medida principal + respaldo) — no es solo una preferencia de diseño, es requisito
+# para el usuario de gran capacidad.
+UMBRAL_KVA_DUPLICAR_MEDIDOR = 1000
+
+
+def cantidad_medidor_bloque(ctx: dict) -> int:
+    kva = ctx["diagnostico"].get("kva")
+    return 2 if isinstance(kva, (int, float)) and kva > UMBRAL_KVA_DUPLICAR_MEDIDOR else 1
+
 
 def _armar_contexto(
     diagnostico: dict, spec: dict, catalogo: list[dict], dictamen: dict, equipos_actuales: dict,

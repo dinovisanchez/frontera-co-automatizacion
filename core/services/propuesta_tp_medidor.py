@@ -5,6 +5,7 @@ Semidirecta no tiene TP, solo TC.
 """
 
 from core.services.deteccion_equipos import describir_condicion_actual
+from core.services.propuesta_equipos_contexto import cantidad_medidor_bloque
 from core.services.resolucion_tc_tp import buscar_candidatos_medidor, buscar_candidatos_tp, resolver_tp_desde_hojas
 
 
@@ -40,10 +41,12 @@ def resolver_propuesta_tp(ctx: dict, propuesta: list[dict], alertas: list[str]) 
 
 def resolver_propuesta_medidor(ctx: dict, propuesta: list[dict]) -> None:
     actual_medidor = ctx["equipos_actuales"].get("medidor")
+    cantidad = cantidad_medidor_bloque(ctx)
+    nota_duplicado = " (medida principal + respaldo, capacidad > 1000 kVA)" if cantidad == 2 else ""
     if ctx["medidor_nt"]:
         propuesta.append({
-            "grupo": "Medidor", "cantidad": 1, "tipo": "Medidor",
-            "razon": f'Según "{ctx["medidor_fuente"]}" (ya calculado por ingeniería para este CO): "{ctx["medidor_texto"]}".' + (f" Actual en Metabase: {describir_condicion_actual(actual_medidor)}." if actual_medidor else ""),
+            "grupo": "Medidor", "cantidad": cantidad, "tipo": "Medidor",
+            "razon": f'Según "{ctx["medidor_fuente"]}" (ya calculado por ingeniería para este CO): "{ctx["medidor_texto"]}".' + nota_duplicado + (f" Actual en Metabase: {describir_condicion_actual(actual_medidor)}." if actual_medidor else ""),
             "sku": ctx["medidor_nt"]["sku"], "costo_estimado": ctx["medidor_nt"]["costo"], "alternativas": [], "requiere_confirmacion": False,
         })
         return
@@ -52,8 +55,8 @@ def resolver_propuesta_medidor(ctx: dict, propuesta: list[dict]) -> None:
     fases_medidor = ctx["fases_medidor"]
     candidatos = buscar_candidatos_medidor([i for i in ctx["catalogo"] if i["categoria"] == "Medidor"], tipo_medida, fases_medidor)
     propuesta.append({
-        "grupo": "Medidor", "cantidad": 1, "tipo": "Medidor",
-        "razon": f"Sugerido según el tipo de medida ({tipo_medida}) y número de fases ({fases_medidor}) — confirma la variante exacta o elige otra de la lista." + (f" Actual en Metabase: {describir_condicion_actual(actual_medidor)}." if actual_medidor else ""),
+        "grupo": "Medidor", "cantidad": cantidad, "tipo": "Medidor",
+        "razon": f"Sugerido según el tipo de medida ({tipo_medida}) y número de fases ({fases_medidor}) — confirma la variante exacta o elige otra de la lista." + nota_duplicado + (f" Actual en Metabase: {describir_condicion_actual(actual_medidor)}." if actual_medidor else ""),
         "sku": candidatos[0]["sku"] if candidatos else None, "costo_estimado": candidatos[0]["costo"] if candidatos else None,
         "alternativas": candidatos[1:], "requiere_confirmacion": True,
     })

@@ -57,7 +57,8 @@ def construir_propuesta_equipos(
         resolver_propuesta_tc(ctx, propuesta, alertas)
         _propagar_ubicacion_desde_tc(ctx, propuesta, catalogo)
 
-    resolver_propuesta_tp(ctx, propuesta, alertas)
+    if faltan.get("tp"):
+        resolver_propuesta_tp(ctx, propuesta, alertas)
     if faltan.get("bloque_pruebas"):
         resolver_propuesta_bloque(ctx, propuesta)
     if faltan.get("medidor"):

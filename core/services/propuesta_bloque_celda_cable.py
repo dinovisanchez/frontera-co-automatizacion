@@ -7,6 +7,7 @@ cantidad calculada para este CO puntual.
 import re
 
 from core.services.deteccion_equipos import describir_condicion_actual
+from core.services.propuesta_equipos_contexto import cantidad_medidor_bloque
 from core.services.resolucion_tc_tp import ordenar_candidatos_celda
 
 
@@ -21,10 +22,13 @@ def resolver_propuesta_bloque(ctx: dict, propuesta: list[dict]) -> None:
         razon = f'"Data cambio NT" indica tipo "{ctx["bloque_texto"]}" — el catálogo (ref_capex) solo tiene un ítem genérico de Bloque de pruebas, no esa variante específica; verifica si aplica o hay que agregarla al catálogo.'
     else:
         razon = "Obligatorio en semidirecta/indirecta para operar cada señal de forma independiente (aclaración 3, CREG 038/2014)."
+    cantidad = cantidad_medidor_bloque(ctx)
+    if cantidad == 2:
+        razon += " (medida principal + respaldo, capacidad > 1000 kVA)."
     if actual_bloque:
         razon += f" Actual en Metabase: {describir_condicion_actual(actual_bloque)}."
     propuesta.append({
-        "grupo": "Bloque de pruebas", "cantidad": 1, "tipo": "Bloque de prueba", "razon": razon,
+        "grupo": "Bloque de pruebas", "cantidad": cantidad, "tipo": "Bloque de prueba", "razon": razon,
         "sku": bloque["sku"] if bloque else None, "costo_estimado": bloque["costo"] if bloque else None,
         "alternativas": [], "requiere_confirmacion": not ctx["bloque_nt"],
     })
