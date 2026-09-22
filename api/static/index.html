@@ -374,6 +374,7 @@
         }
         spinnerEl.textContent = 'Calculando propuesta (CAPEX)…';
         var res = await fetchJSON('POST', '/api/analizar_alcance', { co: co, dictamen: dictamen });
+        res._clasificacion = dictamen.clasificacion; // respaldo para "Maniobra" si "Data" no trae nada
 
         setRunning(id + '_btnAnalizar', id + '_spinnerAnalizar', false);
         renderTarjetaAlcance(id + '_resultado', res);
@@ -612,7 +613,9 @@
         setRunning(id + '_btnConfirmar', id + '_spinnerGuardar', true);
         var destinoGuardar = document.getElementById(id + '_resultGuardar');
         destinoGuardar.innerHTML = '';
-        fetchJSON('POST', '/api/guardar_alcance', { co: res.co, filas: filas }).then(function (r) {
+        var ETIQUETA_CLASIFICACION = { normalizacion: 'Normalización', recuperable: 'Recuperable', cumple: 'Cumple' };
+        var maniobraRespaldo = ETIQUETA_CLASIFICACION[res._clasificacion] || null;
+        fetchJSON('POST', '/api/guardar_alcance', { co: res.co, filas: filas, maniobra_respaldo: maniobraRespaldo }).then(function (r) {
           setRunning(id + '_btnConfirmar', id + '_spinnerGuardar', false);
           destinoGuardar.innerHTML = '<div class="line ok">✓ Guardado (' + r.guardadas.length + ' fila(s)) — <a href="' + r.hoja_url + '" target="_blank">ver hoja Equipos</a></div>';
         }).catch(function (err) {

@@ -2,7 +2,9 @@
 (equivalente a guardarAlcanceProvisional del Apps Script). Solo se llama cuando el usuario
 le da "Confirmado" en el frontend — nada se guarda solo.
 
-Body: {"co": "...", "filas": [{"sku": "...", "cantidad": 1, "tipo": "..."}, ...]}
+Body: {"co": "...", "filas": [{"sku": "...", "cantidad": 1, "tipo": "..."}, ...], "maniobra_respaldo": "Normalización"}
+"maniobra_respaldo" (opcional): texto a usar en la columna "Maniobra" cuando la hoja "Data"
+no trae nada ahí para este CO (pasa seguido) — típicamente la clasificación elegida.
 """
 
 from flask import Blueprint, jsonify, request
@@ -27,9 +29,11 @@ def guardar_alcance():
     if not filas:
         return jsonify({"error": "No hay ninguna fila con SKU para guardar."}), 400
 
+    maniobra_respaldo = body.get("maniobra_respaldo") or None
+
     deps = construir_dependencias(requiere_metabase=False)
     try:
-        resultado = guardar_filas_equipos(deps.sheets, co, filas)
+        resultado = guardar_filas_equipos(deps.sheets, co, filas, maniobra_respaldo=maniobra_respaldo)
     except RuntimeError as e:
         # ej. no existe la hoja "Equipos", o falta la fila de origen en "Data"
         return jsonify({"error": str(e)}), 500

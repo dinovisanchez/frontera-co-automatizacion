@@ -19,17 +19,23 @@ from config.settings import SHEET_EQUIPOS
 _NUM_COLUMNAS_EQUIPOS = 9  # A:I — A:G son datos, H:I son fórmulas de costo
 
 
-def guardar_filas_equipos(sheets: SheetsClient, co_raw: str, filas: list[dict]) -> dict:
+def guardar_filas_equipos(sheets: SheetsClient, co_raw: str, filas: list[dict], maniobra_respaldo: str | None = None) -> dict:
     """`filas`: [{"sku": str, "cantidad": int, "tipo": str}, ...] — ya filtradas/confirmadas
     por el usuario (sin las que marcó "excluir"). cliente/OR/maniobra se toman de la hoja
     "Data" (leer_origen_alcance), igual que hacía el original: el usuario nunca los escribe
     a mano en esta pantalla.
+
+    `maniobra_respaldo`: muchos CO tienen la columna "Maniobra" vacía en "Data" — confirmado
+    por Dinovi, 2026-09-22 (CO0100001596: cliente/OR/SKU sí venían, maniobra no). En vez de
+    dejar esa celda en blanco en "Equipos", se usa este texto (típicamente la clasificación,
+    ej. "Normalización") cuando la hoja no trae nada.
     """
     co = normalizar_codigo(co_raw)
     if not filas:
         raise ValueError("No hay filas para guardar.")
 
     origen = leer_origen_alcance(sheets, co)
+    maniobra = origen["maniobra"] or maniobra_respaldo or ""
     existentes = leer_equipos_existentes(sheets, co)
     hoja = sheets.hoja_por_nombre(SHEET_EQUIPOS)
 
@@ -44,7 +50,7 @@ def guardar_filas_equipos(sheets: SheetsClient, co_raw: str, filas: list[dict]) 
         hoja.insert_rows([[""] * _NUM_COLUMNAS_EQUIPOS], row=fila_nueva, inherit_from_before=True)
         if fila_base >= 1:
             sheets.copiar_fila(hoja, fila_origen=fila_base, fila_destino=fila_nueva, num_columnas=_NUM_COLUMNAS_EQUIPOS)
-        valores_fila = [co, origen["cliente"], origen["or"], origen["maniobra"], f["sku"], f.get("cantidad", 1), f.get("tipo", "")]
+        valores_fila = [co, origen["cliente"], origen["or"], maniobra, f["sku"], f.get("cantidad", 1), f.get("tipo", "")]
         hoja.update(f"A{fila_nueva}:G{fila_nueva}", [valores_fila], value_input_option="USER_ENTERED")
         guardadas.append(valores_fila)
         fila_base = fila_nueva
