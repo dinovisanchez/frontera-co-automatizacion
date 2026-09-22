@@ -1,11 +1,19 @@
-"""OPEX — fuzzy-match de maniobras contra ref_tarifario + cálculo de mano de obra.
+"""OPEX — utilidades sobre ref_tarifario: normalización de texto, matching de maniobras y
+carga cacheada de la hoja.
 
-Puerto directo de las funciones OPEX de Codigo.gs (líneas 4791-5217): normalizarTextoOpex,
-opexSimilitud, buscarManiobraMasParecida, contraparteInstalarDesinstalar, esManiobraTcTpMT,
-categoriaDesdeGrupoOpex, buscarManiobraFiltrada y construirOpexDesdeEquipos. Se omite
-construirPropuestaOpex (la ruta basada en "Consolidado", texto libre) porque esa hoja solo
-tiene los CO cargados a mano — la ruta que de verdad generaliza a cualquier CO es la que
-deriva las maniobras del propio alcance de equipos ya calculado por CAPEX.
+Puerto de las funciones OPEX de Codigo.gs (normalizarTextoOpex, opexSimilitud,
+buscarManiobraMasParecida, categoriaDesdeGrupoOpex, obtenerRefTarifarioCacheado) MÁS un
+matcher nuevo (`buscar_maniobra_por_palabras`) que no existía en el original.
+
+Por qué el matcher nuevo: se verificó la hoja real (Dinovi, 2026-09-21, gid 192919919) y las
+72 maniobras NO son plantillas genéricas como "Instalación de TC" — están armadas por tipo de
+medida × ubicación (ej. "Instalación semidirecta interior (medidor + bloque + módem + toma
+110V si aplica)", "Montaje TCs MT (1–3) – exterior"). El fuzzy-match genérico que traía el
+original (buscarManiobraMasParecida contra una plantilla corta) es ambiguo entre variantes muy
+parecidas (interior/exterior, con/sin bloque) — `buscar_maniobra_por_palabras` en cambio exige
+un conjunto de palabras EXACTO (todas presentes, ninguna de las excluidas) y solo devuelve algo
+si el resultado es inequívoco (exactamente una maniobra califica); ver opex_desde_equipos.py
+para las 24 combinaciones verificadas contra la hoja real.
 """
 
 import re
@@ -17,26 +25,6 @@ from config.settings import SHEET_REF_TARIFARIO
 
 OPEX_OPERADOR_COLUMNAS = ["CELSIA VALLE", "ELECTROHUILA", "ESSA", "AIRE", "ENEL", "EMCALI", "AFINIA", "OTROS_OR"]
 OPEX_UMBRAL_SIMILITUD = 0.35
-OPEX_VERBO_OPUESTO = {"instalacion": "retiro", "retiro": "instalacion", "montaje": "desmonte", "desmonte": "montaje"}
-
-QUERY_MANIOBRA_POR_CATEGORIA_OPEX = {
-    "medidor": "Instalación de medidor",
-    "tc": "Instalación de TC",
-    "tp": "Instalación de TP",
-    "bloque_pruebas": "Instalación de bloque de pruebas",
-    "celda": "Montaje de celda",
-}
-
-# Palabra(s) que la maniobra candidata DEBE contener antes de aceptarla por similitud — sin
-# esto, plantillas genéricas ("Instalación de...") colapsan las 5 categorías en un solo match
-# equivocado (caso real CO0100002908, ver Codigo.gs línea 5074-5082).
-PALABRAS_CLAVE_POR_CATEGORIA_OPEX = {
-    "medidor": ["medidor"],
-    "tc": ["corriente"],
-    "tp": ["potencial", "tension"],
-    "bloque_pruebas": ["bloque"],
-    "celda": ["celda"],
-}
 
 
 def normalizar_texto_opex(s: str | None) -> str:
@@ -69,6 +57,9 @@ def opex_similitud(a_norm: str, b_norm: str) -> float:
 
 
 def buscar_maniobra_mas_parecida(texto_libre: str | None, maniobras_reales: list[str], umbral: float = OPEX_UMBRAL_SIMILITUD) -> str | None:
+    """Fuzzy-match genérico — se deja SOLO para "cable" (grupo de la propia fila, ej. "Cable
+    señal", ya es un texto específico) y como red de seguridad; para medidor/TC/TP/bloque se
+    usa buscar_maniobra_por_palabras, mucho más preciso contra esta hoja."""
     if not texto_libre:
         return None
     norm = normalizar_texto_opex(texto_libre)
@@ -80,26 +71,18 @@ def buscar_maniobra_mas_parecida(texto_libre: str | None, maniobras_reales: list
     return mejor
 
 
-def buscar_maniobra_filtrada(maniobras_reales: list[str], palabras_clave: list[str], texto_query: str, umbral: float = OPEX_UMBRAL_SIMILITUD) -> str | None:
-    candidatas = [m for m in maniobras_reales if any(p in normalizar_texto_opex(m) for p in palabras_clave)]
-    if not candidatas:
-        return None
-    return buscar_maniobra_mas_parecida(texto_query, candidatas, umbral)
-
-
-def contraparte_instalar_desinstalar(maniobra_real: str, maniobras_reales: list[str]) -> str | None:
-    norm = normalizar_texto_opex(maniobra_real)
-    primera_palabra = norm.split(" ")[0] if norm else ""
-    opuesto = OPEX_VERBO_OPUESTO.get(primera_palabra)
-    if not opuesto:
-        return None
-    candidato = opuesto + norm[len(primera_palabra):]
-    return buscar_maniobra_mas_parecida(candidato, maniobras_reales)
-
-
-def es_maniobra_tc_tp_mt(maniobra_real: str) -> bool:
-    norm = normalizar_texto_opex(maniobra_real)
-    return bool(re.search(r"\b(tcs|tps)\b", norm) and re.search(r"\bmt\b", norm) and re.search(r"(montaje|desmonte)", norm))
+def buscar_maniobra_por_palabras(maniobras_reales: list[str], requeridas: list[str], excluidas: list[str] | None = None) -> str | None:
+    """Devuelve la maniobra si EXACTAMENTE UNA contiene todas las `requeridas` y ninguna de las
+    `excluidas` — None si no hay match o si hay más de uno (ambiguo: la hoja pudo haber
+    cambiado, mejor avisar que adivinar).
+    """
+    excluidas = excluidas or []
+    candidatas = []
+    for m in maniobras_reales:
+        norm = normalizar_texto_opex(m)
+        if all(p in norm for p in requeridas) and not any(p in norm for p in excluidas):
+            candidatas.append(m)
+    return candidatas[0] if len(candidatas) == 1 else None
 
 
 def categoria_desde_grupo_opex(grupo: str) -> str | None:
@@ -129,24 +112,24 @@ def obtener_ref_tarifario_cacheado(sheets: SheetsClient) -> dict:
         return _CACHE_TARIFARIO["datos"]
 
     hoja = sheets.hoja_por_nombre(SHEET_REF_TARIFARIO)
-    valores = sheets.leer_todo(hoja)
+    # sin_formato=True: las celdas de precio se VEN como "$118,750.00" pero necesitamos el
+    # número crudo (118750.0) — confirmado al revisar la hoja real (Dinovi, 2026-09-21).
+    valores = sheets.leer_todo(hoja, sin_formato=True)
     header = valores[0]
     maniobras: list[str] = []
     precios: dict[str, dict[str, float]] = {}
     for fila in valores[1:]:
-        nombre = (fila[0] or "").strip()
+        nombre = str(fila[0] or "").strip()
         if not nombre:
             continue
         maniobras.append(nombre)
         precios[nombre] = {}
         for c in range(1, len(header)):
-            operador = (header[c] or "").strip()
+            operador = str(header[c] or "").strip()
             if not operador:
                 continue
-            try:
-                precios[nombre][operador] = float(fila[c]) if fila[c] not in ("", None) else 0.0
-            except ValueError:
-                precios[nombre][operador] = 0.0
+            valor = fila[c] if c < len(fila) else ""
+            precios[nombre][operador] = float(valor) if isinstance(valor, (int, float)) else 0.0
 
     resultado = {"maniobras": maniobras, "precios": precios}
     _CACHE_TARIFARIO.update(datos=resultado, expira_en=ahora + _CACHE_TTL_SEG)

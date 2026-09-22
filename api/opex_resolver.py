@@ -1,14 +1,20 @@
-"""POST /api/opex_resolver — resuelve operador + mano de obra de un CO desde su alcance de
-equipos ya calculado (CAPEX).
+"""POST /api/opex_resolver — resuelve operador + mano de obra de un CO a partir de lo que
+CAPEX ya clasificó (tipo de medida final, ubicación, qué secciones cambian).
 
-Normalmente es rápido (solo lee la hoja "Data" + hace fuzzy-match de texto), pero si el CO no
-tiene OR en esa hoja, cae a leer el acta más reciente (descarga PDF + 1 llamada puntual y
-barata al LLM, ver operator_resolver.py/or_extractor.py) — ese caso sí puede tardar unos
-segundos, cubierto por el `maxDuration: 30` de vercel.json.
+Body esperado:
+{
+  "co": "CO0100002908",
+  "or_manual": "AFINIA",              # opcional: si no viene, se resuelve solo (ver operator_resolver.py)
+  "tipo_medida_final": "indirecta",   # "directa" | "semidirecta" | "indirecta" — de clasificador_medida
+  "ubicacion": "interior",            # "interior" | "exterior" | null — de spec.ubicacion_medida
+  "secciones": {"medidor": true, "tc": true, "tp": true, "bloque_pruebas": true, "celda": false},
+  "es_instalacion_nueva": false,      # true si no hay equipo previo que retirar/desmontar
+  "filas_cable": [{"grupo": "Cable señal", "cantidad": 1}]  # opcional — cable no tiene maniobra propia, solo fuzzy-match
+}
 
-Body esperado: {co, or_manual?, equipos_actuales, filas_equipos}. `or_manual` permite que el
-frontend mande el operador a mano cuando resolver_operador_red devuelve "pendiente_manual"
-(el CO no tiene OR en "Data" ni se pudo leer de ninguna acta).
+Por qué este contrato (no "filas_equipos" genérico como antes): se verificó la hoja real de
+ref_tarifario y sus 72 maniobras están armadas por tipo de medida × ubicación, no por
+categoría de equipo suelta — ver opex_desde_equipos.py.
 """
 
 from flask import Flask, jsonify, request
@@ -20,6 +26,8 @@ from core.utils import normalizar_codigo
 
 app = Flask(__name__)
 
+_TIPOS_MEDIDA_VALIDOS = {"directa", "semidirecta", "indirecta"}
+
 
 @app.post("/api/opex_resolver")
 def opex_resolver():
@@ -29,10 +37,14 @@ def opex_resolver():
         return jsonify({"error": "El código CO es obligatorio."}), 400
     co = normalizar_codigo(co_raw)
 
-    filas_equipos = body.get("filas_equipos") or []
-    if not filas_equipos:
-        return jsonify({"error": "Se necesita 'filas_equipos' (el alcance de equipos de CAPEX) para derivar OPEX."}), 400
-    equipos_actuales = body.get("equipos_actuales") or {}
+    tipo_medida_final = body.get("tipo_medida_final")
+    if tipo_medida_final not in _TIPOS_MEDIDA_VALIDOS:
+        return jsonify({"error": f'"tipo_medida_final" es obligatorio y debe ser uno de {sorted(_TIPOS_MEDIDA_VALIDOS)}.'}), 400
+
+    secciones = body.get("secciones") or {}
+    es_instalacion_nueva = bool(body.get("es_instalacion_nueva", False))
+    ubicacion = body.get("ubicacion")
+    filas_cable = body.get("filas_cable") or []
 
     deps = construir_dependencias(requiere_metabase=False)
 
@@ -45,7 +57,9 @@ def opex_resolver():
             return jsonify({"co": co, "pendiente_operador": True, "motivo": resultado_or.motivo}), 202
         or_raw, fuente_or = resultado_or.or_raw, resultado_or.fuente
 
-    resultado = construir_opex_desde_equipos(deps.sheets, co, or_raw, equipos_actuales, filas_equipos)
+    resultado = construir_opex_desde_equipos(
+        deps.sheets, co, or_raw, tipo_medida_final, ubicacion, secciones, es_instalacion_nueva, filas_cable
+    )
 
     return jsonify({
         "co": resultado.co,
