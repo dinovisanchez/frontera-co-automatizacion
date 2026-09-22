@@ -557,7 +557,12 @@
       html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">"Confirmado" inserta las filas debajo de lo que ya exista de este CO en "Equipos" (o al final si es la primera vez) — nunca sobrescribe nada. El botón de copiar es por si prefieres pegarlas tú mismo.</div>';
       html += '</div>';
 
-      html += '<div class="subsection"><h3>Mano de obra (OPEX)</h3>';
+      html += '<div class="subsection">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" id="' + id + '_opexToggle">';
+      html += '<h3 style="margin:0;">Mano de obra (OPEX)</h3>';
+      html += '<button type="button" class="secondary-btn" style="margin:0;padding:3px 10px;font-size:11px;">+ Desplegar</button>';
+      html += '</div>';
+      html += '<div id="' + id + '_opexBody" style="display:none;margin-top:10px;">';
       html += '<div class="req-note" style="margin:0 0 8px;padding:0;border:none;">Solo vista previa — no se guarda en ninguna hoja.</div>';
       html += '<label class="checkbox-line" style="margin-top:0;"><input type="checkbox" id="' + id + '_instalacionNueva" /> Es instalación nueva (no hay equipo previo que retirar)</label>';
       html += '<label style="margin-top:10px;">OR manual (opcional, deja vacío para resolverlo solo)</label>';
@@ -566,8 +571,17 @@
       html += '<div class="spinner" id="' + id + '_spinnerOpex">Calculando…</div>';
       html += '<div id="' + id + '_opexResultado"></div>';
       html += '</div>';
+      html += '</div>';
 
       document.getElementById(id).innerHTML = html;
+
+      document.getElementById(id + '_opexToggle').addEventListener('click', function () {
+        var body = document.getElementById(id + '_opexBody');
+        var btn = this.querySelector('button');
+        var colapsado = body.style.display === 'none';
+        body.style.display = colapsado ? '' : 'none';
+        btn.textContent = colapsado ? '− Colapsar' : '+ Desplegar';
+      });
 
       var estado = { filas: [], contador: 0 };
       (res.propuesta || []).forEach(function (p) { agregarFilaAlcance(id, estado, p); });
