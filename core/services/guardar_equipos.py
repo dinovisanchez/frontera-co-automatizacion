@@ -33,7 +33,11 @@ def guardar_filas_equipos(sheets: SheetsClient, co_raw: str, filas: list[dict]) 
     existentes = leer_equipos_existentes(sheets, co)
     hoja = sheets.hoja_por_nombre(SHEET_EQUIPOS)
 
-    fila_base = max((f["fila"] for f in existentes), default=None) or hoja.row_count
+    # OJO: hoja.row_count es el tamaño del GRID (a menudo con relleno de filas vacías, ej.
+    # 1000), no la última fila con contenido real — usarlo como base dejaba un hueco enorme
+    # de filas en blanco antes de la fila realmente guardada cuando el CO no tenía filas
+    # previas (Dinovi, 2026-09-22). len(col_values(1)) sí refleja la última fila con datos.
+    fila_base = max((f["fila"] for f in existentes), default=None) or len(hoja.col_values(1))
     guardadas = []
     for f in filas:
         fila_nueva = fila_base + 1
