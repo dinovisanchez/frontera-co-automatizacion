@@ -69,9 +69,21 @@ class _Resolver:
             ret = tc.buscar_maniobra_por_palabras(self.maniobras_reales, requeridas_ret)
             self._agregar(ret, cantidad, "auto-pareja", f"retiro/desmonte de {etiqueta}")
 
-    def extra_fija_mt(self) -> None:
-        self._agregar(tc.buscar_maniobra_por_palabras(self.maniobras_reales, ["apertura", "portacircuito"]), 3, "extra-fija", "apertura de portacircuito")
+    def revision_frontera_si_cambio(self) -> None:
+        """"Revisión de frontera con OR" (Dinovi, 2026-09-22): sale en CUALQUIER cambio de
+        equipo (retiro+instalación), sin importar el tipo de medida — el OR debe estar
+        presente. NO depende de que haya trabajo de TC/TP en MT (a diferencia de
+        extra_fija_mt): una instalación nueva no la necesita, un cambio siempre sí.
+        """
+        if self.es_instalacion_nueva:
+            return
         self._agregar(tc.buscar_maniobra_por_palabras(self.maniobras_reales, ["revision", "frontera"]), 1, "extra-fija", "revisión de frontera con OR")
+
+    def extra_fija_mt(self, ubicacion: str | None) -> None:
+        """Extras que solo aplican cuando hay trabajo de TC/TP en Indirecta (MT)."""
+        self._agregar(tc.buscar_maniobra_por_palabras(self.maniobras_reales, ["apertura", "portacircuito"]), 3, "extra-fija", "apertura de portacircuito")
+        if ubicacion == "exterior":
+            self._agregar(tc.buscar_maniobra_por_palabras(self.maniobras_reales, ["cambio", "crucetas", "mt", "exterior"]), 1, "extra-fija", "cambio de crucetas en MT (exterior)")
         if self.es_instalacion_nueva:
             self._agregar(tc.buscar_maniobra_por_palabras(self.maniobras_reales, ["cambio", "dps"]), 6, "extra-fija", "cambio de DPS")
         else:
@@ -125,7 +137,9 @@ def construir_opex_desde_equipos(
 
     hubo_mt = _resolver_tc_tp(r, tipo_medida_final, ubicacion, bool(secciones.get("tc")), bool(secciones.get("tp")))
     if hubo_mt:
-        r.extra_fija_mt()
+        r.extra_fija_mt(ubicacion)
+
+    r.revision_frontera_si_cambio()
 
     if secciones.get("celda"):
         alertas.append('"Celda" no tiene ninguna maniobra propia en ref_tarifario — agrégala a mano.')

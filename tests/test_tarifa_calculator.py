@@ -33,6 +33,7 @@ MANIOBRAS_REALES = [
     "Montaje  TPs MT (1–3) – interior",
     "Apertura de portacircuito (unidad)",
     "Revisión de frontera con OR u otro agente (acompañamiento y registro)",
+    "Cambio de crucetas en MT (exterior)(unidad)",
     "Cambio de DPS (unidad)",
     "Calibración en sitio por equipo TCs - TPs MT",
 ]
