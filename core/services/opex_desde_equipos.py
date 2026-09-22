@@ -124,21 +124,42 @@ def _resolver_medidor(r: _Resolver, tipo_medida_final: str, tipo_medida_actual: 
     r.agregar_directo(ret, 1, "auto-pareja", f"retiro de medidor ({tipo_retiro})")
 
 
-def _resolver_tc_tp(r: _Resolver, tipo_medida: str, ubicacion: str | None, hay_tc: bool, hay_tp: bool) -> bool:
-    """Devuelve True si se agregó algo de TC/TP en MT (dispara extra_fija_mt)."""
-    if tipo_medida == "semidirecta" and hay_tc:
+def _resolver_tc_tp(r: _Resolver, tipo_medida_final: str, tipo_medida_actual: str | None, ubicacion: str | None, hay_tc: bool, hay_tp: bool) -> bool:
+    """Devuelve True si se agregó algo de TC/TP en MT (dispara extra_fija_mt).
+
+    `tipo_medida_actual`: igual criterio que _resolver_medidor — el retiro depende de lo que
+    había ANTES del cambio, no del tipo final. Confirmado por Dinovi, 2026-09-22: al pasar de
+    semidirecta a indirecta (cambio de nivel de tensión), el TC de semidirecta es de BT, no de
+    MT — "desmonte TCs MT" no aplica, es "retiro TCs semidirecta". TP nunca existió en
+    semidirecta/directa, así que si viene de ahí no hay ningún TP que retirar.
+    """
+    tipo_retiro = tipo_medida_actual or tipo_medida_final
+
+    if tipo_medida_final == "semidirecta" and hay_tc:
         r.con_contraparte(["instalacion", "tcs", "semidirecta"], ["retiro", "tcs", "semidirecta"], 1, "TCs (semidirecta)")
         return False  # TCs en semidirecta NO son MT — no aplican los extras de portacircuito/DPS/calibración
 
-    if tipo_medida != "indirecta" or not (hay_tc or hay_tp):
+    if tipo_medida_final != "indirecta" or not (hay_tc or hay_tp):
         return False
     if ubicacion not in ("interior", "exterior"):
         r.alertas.append("No se conoce la ubicación (interior/exterior) — no se puede tarifar el montaje de TC/TP en MT, agrégalo a mano.")
         return False
+
+    ya_era_indirecta = tipo_retiro == "indirecta"  # solo entonces había TC/TP en MT para desmontar
+
     if hay_tc:
-        r.con_contraparte(["montaje", "tcs", "mt", ubicacion], ["desmonte", "tcs", "mt", ubicacion], 1, "TCs en MT")
+        if ya_era_indirecta:
+            r.con_contraparte(["montaje", "tcs", "mt", ubicacion], ["desmonte", "tcs", "mt", ubicacion], 1, "TCs en MT")
+        else:
+            r.agregar_directo(tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["montaje", "tcs", "mt", ubicacion]), 1, "equipo", "montaje de TCs en MT")
+            if not r.es_instalacion_nueva and tipo_retiro == "semidirecta":
+                r.agregar_directo(tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["retiro", "tcs", "semidirecta"]), 1, "auto-pareja", "retiro de TCs (semidirecta, pasa a MT)")
     if hay_tp:
-        r.con_contraparte(["montaje", "tps", "mt", ubicacion], ["desmonte", "tps", "mt", ubicacion], 1, "TPs en MT")
+        if ya_era_indirecta:
+            r.con_contraparte(["montaje", "tps", "mt", ubicacion], ["desmonte", "tps", "mt", ubicacion], 1, "TPs en MT")
+        else:
+            r.agregar_directo(tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["montaje", "tps", "mt", ubicacion]), 1, "equipo", "montaje de TPs en MT")
+            # tipo_retiro directa/semidirecta: TP nunca existió antes, no hay nada que retirar
     return True
 
 
@@ -159,7 +180,7 @@ def construir_opex_desde_equipos(
     if secciones.get("medidor") or secciones.get("bloque_pruebas"):
         _resolver_medidor(r, tipo_medida_final, tipo_medida_actual, ubicacion, con_bloque=bool(secciones.get("bloque_pruebas")))
 
-    hubo_mt = _resolver_tc_tp(r, tipo_medida_final, ubicacion, bool(secciones.get("tc")), bool(secciones.get("tp")))
+    hubo_mt = _resolver_tc_tp(r, tipo_medida_final, tipo_medida_actual, ubicacion, bool(secciones.get("tc")), bool(secciones.get("tp")))
     if hubo_mt:
         r.extra_fija_mt(ubicacion)
 
