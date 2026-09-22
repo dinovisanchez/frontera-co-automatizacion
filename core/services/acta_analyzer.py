@@ -11,7 +11,7 @@ import base64
 from dataclasses import dataclass
 
 from core.data_sources.llm_client import AnthropicClient
-from core.prompts.acta_extraction_prompt import ACTA_EXTRACTION_PROMPT_V1
+from core.prompts.acta_extraction_prompt import ACTA_EXTRACTION_PROMPT_V2
 from core.validators.alcance_schema import RespuestaActa, normalizar_spec_acta, parsear_respuesta_alcance
 
 
@@ -40,7 +40,7 @@ def analizar_acta_desde_texto(meta: MetadatosActa, texto_ocr: str, llm: Anthropi
         + f"\n\n--- TEXTO DEL ACTA (OCR) ---\n{texto_ocr}"
     )
     body = llm.cuerpo_extraccion_acta(
-        ACTA_EXTRACTION_PROMPT_V1,
+        ACTA_EXTRACTION_PROMPT_V2,
         [{"type": "text", "text": instruccion}],
     )
     return _ejecutar(body, llm)
@@ -55,7 +55,7 @@ def analizar_acta_desde_pdf(meta: MetadatosActa, pdf_bytes: bytes, llm: Anthropi
         f"{meta.co}. " + _instruccion_comun(meta)
     )
     body = llm.cuerpo_extraccion_acta(
-        ACTA_EXTRACTION_PROMPT_V1,
+        ACTA_EXTRACTION_PROMPT_V2,
         [
             {
                 "type": "document",

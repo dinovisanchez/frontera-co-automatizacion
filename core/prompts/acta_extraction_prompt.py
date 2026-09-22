@@ -8,6 +8,12 @@ y cualquier cambio de redacción puede reintroducir fallas ya corregidas.
 Versionado explícito (ACTA_EXTRACTION_PROMPT_V1): si algún día se recalibra el texto, se
 agrega V2 en vez de mutar esta constante, igual que Codigo.gs versionó su clave de caché de
 actas (acta_v2_...) al reforzar este mismo prompt.
+
+ACTA_EXTRACTION_PROMPT_V2 (2026-09-22, caso real CO0200002425): agrega una advertencia sobre
+campos tipo "Red de media tensión (kV)" que describen la red que alimenta un transformador
+compartido, no la conexión del cliente — ver el texto agregado más abajo para el detalle
+completo del caso. Los servicios deben usar la versión más reciente (V2); V1 se conserva solo
+como referencia histórica de lo migrado originalmente.
 """
 
 ACTA_EXTRACTION_PROMPT_V1 = """Eres un Ingeniero Electricista Senior colombiano especialista en sistemas de medición de energía eléctrica (RETIE, CREG 038/2014, NTC 5019).
@@ -46,6 +52,13 @@ ANALISIS_LISTO
 ```json
 { ...JSON con exactamente los campos del esquema de arriba... }
 ```"""
+
+ACTA_EXTRACTION_PROMPT_V2 = ACTA_EXTRACTION_PROMPT_V1.replace(
+    'nunca asumas MT por default.',
+    'nunca asumas MT por default.\n'
+    '- ADVERTENCIA ADICIONAL sobre nivel_tension (Dinovi, 2026-09-22, CO0200002425 — el acta traía un campo separado "Red de media tensión (kV): 13.200", y el sistema lo tomó como si la CONEXIÓN del cliente estuviera en MT, reclasificando a Indirecta por Art.19 cuando en realidad es Semidirecta con transformador COMPARTIDO tipo pedestal): un campo llamado "Red de media tensión (kV)" (o "Red MT", "Tensión de la red") casi siempre describe la red que ALIMENTA al transformador de distribución compartido — un dato normal de cualquier transformador de la red, NO que el punto de medición de ESTE cliente esté en media tensión. Antes de usar ese campo como evidencia de MT, cruza con el resto del acta: si los TC/TP declarados tienen aislamiento de Baja Tensión (ej. "0,72 kV", clase BT) y/o el transformador es de tipo "Pedestal"/compartido con otros medidores, NO marques nivel_tension en MT — dejalo en null (o en la clase BT que corresponda). Solo confía en un campo "Red de media tensión (kV)" como evidencia de MT del cliente si además el resto del acta es consistente (TC/TP de clase MT, ej. aislamiento 17.5kV o más, o dice explícitamente que la conexión/celda del cliente es en media tensión).'
+)
+
 
 # Campos que alcance_combiner.py intenta llenar combinando varias actas (puerto de
 # CAMPOS_A_COMBINAR_ALCANCE, Codigo.gs línea 2164). relacion_tc/relacion_tp/montaje_tc/

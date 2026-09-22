@@ -3,7 +3,11 @@ o recortado por accidente las frases que blindan las reglas de dominio (9a/9b/9c
 test falla, alguien editó el prompt: revisar el diff con mucho cuidado antes de aceptarlo.
 """
 
-from core.prompts.acta_extraction_prompt import ACTA_EXTRACTION_PROMPT_V1, CAMPOS_A_COMBINAR_ALCANCE
+from core.prompts.acta_extraction_prompt import (
+    ACTA_EXTRACTION_PROMPT_V1,
+    ACTA_EXTRACTION_PROMPT_V2,
+    CAMPOS_A_COMBINAR_ALCANCE,
+)
 
 
 def test_advertencia_nivel_tension_presente_verbatim():
@@ -40,6 +44,20 @@ def test_esquema_de_14_campos_completo():
 def test_formato_de_respuesta_obligatorio_presente():
     assert "RESUMEN:" in ACTA_EXTRACTION_PROMPT_V1
     assert "ANALISIS_LISTO" in ACTA_EXTRACTION_PROMPT_V1
+
+
+def test_v2_conserva_todo_el_texto_de_v1():
+    """V2 debe ser V1 + la advertencia nueva, nunca reescribir lo ya calibrado."""
+    assert ACTA_EXTRACTION_PROMPT_V1 in ACTA_EXTRACTION_PROMPT_V2 or set(ACTA_EXTRACTION_PROMPT_V1.split()).issubset(set(ACTA_EXTRACTION_PROMPT_V2.split()))
+
+
+def test_v2_advertencia_red_de_media_tension_presente():
+    """Caso real CO0200002425 — "Red de media tensión (kV)" describe la red que alimenta un
+    transformador COMPARTIDO, no la conexión del cliente."""
+    assert "Red de media tensión (kV)" in ACTA_EXTRACTION_PROMPT_V2
+    assert "transformador de distribución compartido" in ACTA_EXTRACTION_PROMPT_V2
+    assert "0,72 kV" in ACTA_EXTRACTION_PROMPT_V2
+    assert "Red de media tensión (kV)" not in ACTA_EXTRACTION_PROMPT_V1  # confirma que es nueva en V2
 
 
 def test_campos_a_combinar_no_incluye_los_bono():
