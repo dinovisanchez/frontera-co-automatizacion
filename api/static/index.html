@@ -670,17 +670,20 @@
         '</b> (OR original: ' + escapeHtml(opex.orOriginal || '?') + ')' +
         (opex.opcionCumplimiento ? ' · Opción de cumplimiento: ' + escapeHtml(opex.opcionCumplimiento) : '') + '</div>';
 
-      html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">';
+      var idTabla = 'opexTabla_' + Math.random().toString(36).slice(2);
+      html += '<div style="overflow-x:auto;"><table id="' + idTabla + '" style="width:100%;border-collapse:collapse;font-size:12px;">';
       html += '<thead><tr style="text-align:left;color:var(--text-sub);border-bottom:1px solid var(--border-soft);">' +
-        '<th style="padding:5px 6px;">Maniobra</th><th style="padding:5px 6px;">Origen</th>' +
+        '<th style="padding:5px 6px;"></th><th style="padding:5px 6px;">Maniobra</th><th style="padding:5px 6px;">Origen</th>' +
         '<th style="padding:5px 6px;text-align:right;">Cant.</th><th style="padding:5px 6px;text-align:right;">Unitario</th>' +
         '<th style="padding:5px 6px;text-align:right;">Total MO</th><th style="padding:5px 6px;text-align:right;">Carro canasta</th>' +
         '<th style="padding:5px 6px;text-align:right;">Descargo</th><th style="padding:5px 6px;text-align:right;">Acompañ.</th>' +
         '<th style="padding:5px 6px;text-align:right;">Total c/extras</th></tr></thead><tbody>';
 
       var ORIGEN_LABEL = { texto: 'del acta', equipo: 'del equipo propuesto', 'auto-pareja': 'pareja automática', 'extra-fija': 'fija (TC/TP MT)' };
-      opex.filas.forEach(function (f) {
-        html += '<tr style="border-bottom:1px solid var(--border-soft);">' +
+      opex.filas.forEach(function (f, i) {
+        var idExcluirOpex = idTabla + '_excluir' + i;
+        html += '<tr id="' + idTabla + '_fila' + i + '" style="border-bottom:1px solid var(--border-soft);">' +
+          '<td style="padding:5px 6px;"><input type="checkbox" id="' + idExcluirOpex + '" title="excluir" /></td>' +
           '<td style="padding:5px 6px;">' + escapeHtml(f.maniobra) + '</td>' +
           '<td style="padding:5px 6px;color:var(--text-faint);">' + escapeHtml(ORIGEN_LABEL[f.origen] || f.origen) + '</td>' +
           '<td style="padding:5px 6px;text-align:right;">' + f.cantidad + '</td>' +
@@ -693,30 +696,52 @@
           '</tr>';
       });
       html += '</tbody></table></div>';
-      html += '<div class="line" style="text-align:right;font-weight:700;margin-top:6px;">Total general: ' + formatoPesos(opex.totalGeneral) + '</div>';
+      html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">Marca la casilla para excluir esa maniobra — no se copia ni se guarda si la excluyes.</div>';
+      html += '<div class="line" id="' + idTabla + '_total" style="text-align:right;font-weight:700;margin-top:6px;">Total general: ' + formatoPesos(opex.totalGeneral) + '</div>';
 
       var idBtnGuardar = 'opexGuardar_' + Math.random().toString(36).slice(2);
       var idSpinnerGuardar = 'opexSpinnerGuardar_' + Math.random().toString(36).slice(2);
       var idResultGuardar = 'opexResultGuardar_' + Math.random().toString(36).slice(2);
       var idBtnCopiar = 'opexCopiar_' + Math.random().toString(36).slice(2);
-      var textoParaPegar = opex.filas.map(function (f) {
-        return [f.maniobra, f.cantidad, f.costoUnitarioMO, f.costoTotalMO].join('\t');
-      }).join('\n');
       html += '<button id="' + idBtnGuardar + '" style="margin-top:8px;">Confirmado — guardar en OPEX</button>';
       html += '<div class="spinner" id="' + idSpinnerGuardar + '">Guardando…</div>';
       html += '<div id="' + idResultGuardar + '"></div>';
       html += '<button class="copy-btn" id="' + idBtnCopiar + '">📋 O solo copiar filas (sin guardar)</button>';
-      html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">"Confirmado" agrega estas filas al final de la hoja "OPEX" (esa hoja no tiene columna de código CO para ubicar una posición puntual).</div>';
+      html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">"Confirmado" agrega estas filas al final de la hoja "OPEX" (esa hoja no tiene columna de código CO para ubicar una posición puntual). Las que excluyas arriba no se copian ni se guardan.</div>';
 
       setTimeout(function () {
+        /** Filas de OPEX visibles (no excluidas) — recalcula el total en vivo si excluyes algo. */
+        function filasIncluidas() {
+          return opex.filas.filter(function (f, i) {
+            var chk = document.getElementById(idTabla + '_excluir' + i);
+            return !chk || !chk.checked;
+          });
+        }
+        function actualizarTotal() {
+          var total = filasIncluidas().reduce(function (s, f) { return s + (f.costoTotalConExtras || 0); }, 0);
+          var totalEl = document.getElementById(idTabla + '_total');
+          if (totalEl) totalEl.textContent = 'Total general: ' + formatoPesos(total);
+        }
+        opex.filas.forEach(function (f, i) {
+          var chk = document.getElementById(idTabla + '_excluir' + i);
+          if (chk) chk.addEventListener('change', actualizarTotal);
+        });
+
         var btnCopiar = document.getElementById(idBtnCopiar);
-        if (btnCopiar) btnCopiar.addEventListener('click', function () { copiarTexto(textoParaPegar, btnCopiar); });
+        if (btnCopiar) btnCopiar.addEventListener('click', function () {
+          var texto = filasIncluidas().map(function (f) {
+            return [f.maniobra, f.cantidad, f.costoUnitarioMO, f.costoTotalMO].join('\t');
+          }).join('\n');
+          if (!texto) { alert('No hay ninguna fila incluida para copiar.'); return; }
+          copiarTexto(texto, btnCopiar);
+        });
 
         var btnGuardar = document.getElementById(idBtnGuardar);
         if (btnGuardar) btnGuardar.addEventListener('click', function () {
-          var filas = opex.filas.map(function (f) {
+          var filas = filasIncluidas().map(function (f) {
             return { maniobra: f.maniobra, cantidad: f.cantidad };
           });
+          if (!filas.length) { alert('No hay ninguna fila incluida para guardar.'); return; }
           setRunning(idBtnGuardar, idSpinnerGuardar, true);
           var destino = document.getElementById(idResultGuardar);
           destino.innerHTML = '';
