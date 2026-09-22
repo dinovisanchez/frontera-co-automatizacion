@@ -64,6 +64,33 @@ class SheetsClient:
                 return hoja
         return None
 
+    def copiar_fila(self, hoja: gspread.Worksheet, fila_origen: int, fila_destino: int, num_columnas: int) -> None:
+        """Copia una fila completa (fórmulas, formato, validación de datos) a otra fila del
+        MISMO documento — equivalente a Range.copyTo() de Apps Script (usado por
+        guardarAlcanceProvisional para heredar las fórmulas de costo de las columnas H/I de
+        "Equipos" en la fila nueva). gspread no expone esto como helper, así que se manda el
+        request crudo de la Sheets API; las referencias relativas de una fórmula (ej.
+        VLOOKUP(E5,...)) se ajustan solas a la fila destino, igual que copyTo().
+        """
+        body = {
+            "requests": [{
+                "copyPaste": {
+                    "source": {
+                        "sheetId": hoja.id,
+                        "startRowIndex": fila_origen - 1, "endRowIndex": fila_origen,
+                        "startColumnIndex": 0, "endColumnIndex": num_columnas,
+                    },
+                    "destination": {
+                        "sheetId": hoja.id,
+                        "startRowIndex": fila_destino - 1, "endRowIndex": fila_destino,
+                        "startColumnIndex": 0, "endColumnIndex": num_columnas,
+                    },
+                    "pasteType": "PASTE_NORMAL",
+                }
+            }]
+        }
+        self._spreadsheet.batch_update(body)
+
     def leer_todo(self, hoja: gspread.Worksheet, sin_formato: bool = False) -> list[list[Any]]:
         """Equivalente a hoja.getRange(1,1,ultimaFila,ultimaColumna).getValues().
 
