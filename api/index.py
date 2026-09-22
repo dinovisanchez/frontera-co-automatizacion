@@ -16,6 +16,7 @@ from api.actas_step import bp as actas_step_bp
 from api.analizar_alcance import bp as analizar_alcance_bp
 from api.cron_reintentos import bp as cron_reintentos_bp
 from api.guardar_alcance import bp as guardar_alcance_bp
+from api.guardar_opex import bp as guardar_opex_bp
 from api.opex_resolver import bp as opex_resolver_bp
 
 app = Flask(__name__)
@@ -26,6 +27,7 @@ app.register_blueprint(opex_resolver_bp)
 app.register_blueprint(cron_reintentos_bp)
 app.register_blueprint(analizar_alcance_bp)
 app.register_blueprint(guardar_alcance_bp)
+app.register_blueprint(guardar_opex_bp)
 
 _FRONTEND_HTML = (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
 

@@ -667,16 +667,39 @@
       html += '</tbody></table></div>';
       html += '<div class="line" style="text-align:right;font-weight:700;margin-top:6px;">Total general: ' + formatoPesos(opex.totalGeneral) + '</div>';
 
+      var idBtnGuardar = 'opexGuardar_' + Math.random().toString(36).slice(2);
+      var idSpinnerGuardar = 'opexSpinnerGuardar_' + Math.random().toString(36).slice(2);
+      var idResultGuardar = 'opexResultGuardar_' + Math.random().toString(36).slice(2);
       var idBtnCopiar = 'opexCopiar_' + Math.random().toString(36).slice(2);
       var textoParaPegar = opex.filas.map(function (f) {
         return [f.maniobra, f.cantidad, f.costoUnitarioMO, f.costoTotalMO].join('\t');
       }).join('\n');
-      html += '<button class="copy-btn" id="' + idBtnCopiar + '" style="margin-top:8px;">📋 Copiar filas para pegar en Sheets</button>';
-      html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">Cada línea: Maniobra, Cantidad, Costo unitario, Costo total (separadas por tabulador).</div>';
+      html += '<button id="' + idBtnGuardar + '" style="margin-top:8px;">Confirmado — guardar en OPEX</button>';
+      html += '<div class="spinner" id="' + idSpinnerGuardar + '">Guardando…</div>';
+      html += '<div id="' + idResultGuardar + '"></div>';
+      html += '<button class="copy-btn" id="' + idBtnCopiar + '">📋 O solo copiar filas (sin guardar)</button>';
+      html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">"Confirmado" agrega estas filas al final de la hoja "OPEX" (esa hoja no tiene columna de código CO para ubicar una posición puntual).</div>';
 
       setTimeout(function () {
-        var btn = document.getElementById(idBtnCopiar);
-        if (btn) btn.addEventListener('click', function () { copiarTexto(textoParaPegar, btn); });
+        var btnCopiar = document.getElementById(idBtnCopiar);
+        if (btnCopiar) btnCopiar.addEventListener('click', function () { copiarTexto(textoParaPegar, btnCopiar); });
+
+        var btnGuardar = document.getElementById(idBtnGuardar);
+        if (btnGuardar) btnGuardar.addEventListener('click', function () {
+          var filas = opex.filas.map(function (f) {
+            return { maniobra: f.maniobra, cantidad: f.cantidad, costo_unitario: f.costoUnitarioMO, costo_total: f.costoTotalMO };
+          });
+          setRunning(idBtnGuardar, idSpinnerGuardar, true);
+          var destino = document.getElementById(idResultGuardar);
+          destino.innerHTML = '';
+          fetchJSON('POST', '/api/guardar_opex', { filas: filas }).then(function (r) {
+            setRunning(idBtnGuardar, idSpinnerGuardar, false);
+            destino.innerHTML = '<div class="line ok">✓ Guardado (' + r.guardadas.length + ' fila(s)) — <a href="' + r.hoja_url + '" target="_blank">ver hoja OPEX</a></div>';
+          }).catch(function (err) {
+            setRunning(idBtnGuardar, idSpinnerGuardar, false);
+            destino.innerHTML = renderError(err);
+          });
+        });
       }, 0);
 
       return html;

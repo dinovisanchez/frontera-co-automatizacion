@@ -70,6 +70,11 @@ SHEET_CONSOLIDADO = "Consolidado"
 SHEET_EQUIPOS = "Equipos"
 SHEET_REF_CAPEX = "ref_capex"
 
+# Hoja "OPEX" (mano de obra) — confirmado por Dinovi, 2026-09-22: no tiene columna de código
+# CO (a diferencia de "Equipos"), así que las filas nuevas van al final, no debajo de un
+# código puntual.
+SHEET_OPEX = "OPEX"
+
 # Hoja de "origen" (cliente/OR/maniobra por CO) — la misma que Dinovi confirmó como la hoja
 # "Data": en Codigo.gs se referencia por GID, no por nombre (ALCANCE_GID_ORIGEN = 1682501029,
 # ALCANCE_FILA_INICIO_ORIGEN = 4). Se preserva igual acá: sheets_client debe resolver la
