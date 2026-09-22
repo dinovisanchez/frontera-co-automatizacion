@@ -4,7 +4,8 @@
     "api/actas_step.py": { "maxDuration": 60 },
     "api/cron_reintentos.py": { "maxDuration": 60 },
     "api/actas_status.py": { "maxDuration": 15 },
-    "api/opex_resolver.py": { "maxDuration": 30 }
+    "api/opex_resolver.py": { "maxDuration": 30 },
+    "api/analizar_alcance.py": { "maxDuration": 45 }
   },
   "crons": [
     {

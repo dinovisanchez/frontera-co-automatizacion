@@ -43,6 +43,11 @@ class ClasificacionMedida:
     nivel_tension: str | None = None
     kva: float | None = None
     elementos: int | None = None
+    # Número real de fases (1/2/3) para elegir el MODELO de medidor — separado de "elementos"
+    # (2/3, solo para TC/TP) precisamente para no perder el caso monofásico. El acta nunca lo
+    # trae directamente (no es parte del esquema de 14 campos); solo llega si el llamador lo
+    # rellenó desde la hoja maestra (ver alcance_provisional.py) antes de clasificar.
+    fases_medidor: int | None = None
     motivo: str = ""
     reclasificado: bool = False
 
@@ -81,6 +86,7 @@ def clasificar_tipo_medida(
         nivel_tension=nivel_tension,
         kva=kva_final,
         elementos=spec.get("elementos_medida") if isinstance(spec.get("elementos_medida"), int) else None,
+        fases_medidor=spec.get("fases_medidor") if isinstance(spec.get("fases_medidor"), int) else None,
     )
 
     # Regla 9d-previa (Codigo.gs 3661-3678): la sola presencia en "Data cambio NT" o

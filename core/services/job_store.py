@@ -20,7 +20,10 @@ from dataclasses import dataclass, field
 from core.data_sources.sheets_client import SheetsClient
 
 SHEET_JOBS = "PyAsyncJobs"
-_COLUMNAS = ["co", "estado", "actas_pendientes_json", "spec_combinado_json", "actas_usadas_json", "observaciones_json", "actualizado_en"]
+_COLUMNAS = [
+    "co", "estado", "actas_pendientes_json", "spec_combinado_json", "actas_usadas_json", "observaciones_json",
+    "tiene_acta_instalacion", "capacidades_vistas_json", "relaciones_tc_vistas_json", "actualizado_en",
+]
 
 ESTADO_PENDIENTE = "pendiente"
 ESTADO_EN_PROGRESO = "en_progreso"
@@ -36,6 +39,13 @@ class EstadoJob:
     spec_combinado: dict = field(default_factory=dict)
     actas_usadas: list[dict] = field(default_factory=list)
     observaciones: list[str] = field(default_factory=list)
+    # Existe o no una acta INST para el CO — se decide UNA vez al crear el job (mirando TODAS
+    # las filas de Metabase, no solo las que se alcanzaron a leer) y no cambia entre pasos.
+    tiene_acta_instalacion: bool = False
+    # Todos los valores vistos (no solo el primero) — para avisar si dos actas no coinciden en
+    # capacidad/relación de TC, igual que el original.
+    capacidades_vistas: list[dict] = field(default_factory=list)
+    relaciones_tc_vistas: list[dict] = field(default_factory=list)
 
 
 class JobStore:
@@ -57,8 +67,8 @@ class JobStore:
                 return i
         return None
 
-    def crear_o_reiniciar(self, co: str, actas_pendientes: list[dict]) -> EstadoJob:
-        estado = EstadoJob(co=co, estado=ESTADO_EN_PROGRESO, actas_pendientes=actas_pendientes)
+    def crear_o_reiniciar(self, co: str, actas_pendientes: list[dict], tiene_acta_instalacion: bool = False) -> EstadoJob:
+        estado = EstadoJob(co=co, estado=ESTADO_EN_PROGRESO, actas_pendientes=actas_pendientes, tiene_acta_instalacion=tiene_acta_instalacion)
         self._guardar(estado)
         return estado
 
@@ -76,6 +86,9 @@ class JobStore:
             spec_combinado=json.loads(fila[3] or "{}"),
             actas_usadas=json.loads(fila[4] or "[]"),
             observaciones=json.loads(fila[5] or "[]"),
+            tiene_acta_instalacion=(fila[6] == "1"),
+            capacidades_vistas=json.loads(fila[7] or "[]"),
+            relaciones_tc_vistas=json.loads(fila[8] or "[]"),
         )
 
     def _guardar(self, estado: EstadoJob) -> None:
@@ -87,13 +100,16 @@ class JobStore:
             json.dumps(estado.spec_combinado, ensure_ascii=False),
             json.dumps(estado.actas_usadas, ensure_ascii=False),
             json.dumps(estado.observaciones, ensure_ascii=False),
+            "1" if estado.tiene_acta_instalacion else "0",
+            json.dumps(estado.capacidades_vistas, ensure_ascii=False),
+            json.dumps(estado.relaciones_tc_vistas, ensure_ascii=False),
             str(int(time.time())),
         ]
         fila_idx = self._fila_de(hoja, estado.co)
         if fila_idx is None:
             hoja.append_row(fila_valores)
         else:
-            hoja.update(f"A{fila_idx}:G{fila_idx}", [fila_valores])
+            hoja.update(f"A{fila_idx}:J{fila_idx}", [fila_valores])
 
     def guardar_progreso(self, estado: EstadoJob) -> None:
         self._guardar(estado)

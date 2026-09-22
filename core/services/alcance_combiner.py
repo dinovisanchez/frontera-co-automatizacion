@@ -29,6 +29,17 @@ class ResultadoPaso:
     estado: EstadoJob
 
 
+def hay_acta_instalacion(filas_metabase_co: list[dict]) -> bool:
+    """Existe o no una acta tipo INST para el CO — independiente de si el bucle de pasos llega
+    a leerla (puede detenerse antes si otra acta más reciente ya llenó los campos). Se calcula
+    sobre TODAS las filas de Metabase que califican, no solo las seleccionadas para leer."""
+    return any(
+        (r.get("service_type_id") or "").upper() == "INST"
+        for r in filas_metabase_co
+        if (r.get("service_type_id") or "").upper() in TIPOS_ACTA_ALCANCE
+    )
+
+
 def preparar_actas_pendientes(co: str, filas_metabase_co: list[dict]) -> list[dict]:
     """Puerto de la deduplicación por act_pdf_url + orden por fecha desc (Codigo.gs
     líneas 3214-3237): una URL de acta puede repetirse una vez por equipo de esa visita.
@@ -63,10 +74,20 @@ def _combinar_en(estado: EstadoJob, fila: dict, etiqueta: str, spec: dict) -> No
             aportados.append(c)
     if estado.spec_combinado.get("recuperable_por_cable") is None and spec.get("recuperable_por_cable") is not None:
         estado.spec_combinado["recuperable_por_cable"] = spec["recuperable_por_cable"]
+
+    if spec.get("capacidad_instalada_kva") is not None:
+        estado.capacidades_vistas.append({"valor": spec["capacidad_instalada_kva"], "etiqueta": etiqueta})
+        if "capacidad_instalada_kva" not in aportados:
+            aportados.append("capacidad_instalada_kva (adicional, para cruzar)")
+
     for c in _CAMPOS_BONO:
         if estado.spec_combinado.get(c) is None and spec.get(c) is not None:
             estado.spec_combinado[c] = spec[c]
             aportados.append(c)
+    if spec.get("relacion_tc") is not None:
+        estado.relaciones_tc_vistas.append({"valor": spec["relacion_tc"], "etiqueta": etiqueta})
+        if "relacion_tc" not in aportados:
+            aportados.append("relacion_tc (adicional, para cruzar)")
     if spec.get("observaciones"):
         estado.observaciones.append(f"[{etiqueta}] {spec['observaciones']}")
 

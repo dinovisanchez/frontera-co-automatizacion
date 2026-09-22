@@ -101,6 +101,28 @@ El caso real **CO0200002425** (semidirecta, transformador compartido, TC sin cer
 condición: cambiarlo) quedó como test de integración en `test_propuesta_equipos.py`,
 reproduciendo exactamente el SKU/precio que se validó a mano con Dinovi.
 
+## Orquestador final — `/api/analizar_alcance`
+
+`alcance_provisional.py` es el puerto de `analizarAlcanceProvisional`: ata acta (ya combinada
+por el job async) + hoja maestra + Data cambio NT + Normalizaciones_Indirectas + certificado
+de calibración (`certificado_extractor.py`, mismo patrón que `or_extractor.py`) +
+clasificación + catálogo, y entrega la propuesta final + las alertas en cascada del original
+(sin acta INST, capacidad/TC en desacuerdo entre actas, ubicación asumida por OR, etc.).
+
+A diferencia del original, **no lee actas por dentro** — `POST /api/analizar_alcance` exige
+que el job de `/api/actas_start` + `/api/actas_step` ya esté `completo` para ese CO (o que
+`dictamen.sinActas=true`), para no repetir ese trabajo ni arriesgar timeout en cada llamada.
+Body: `{"co", "dictamen": {clasificacion, capacidadIncierta?, sinActas?, seccionesForzadas?,
+detalleFaltante?}}` — mismo JSON que ya arma Index.html en el original.
+
+⚠️ **Gap conocido, no corregido todavía**: el original usa `dictamen.capacidadIncierta` para
+decidir si sigue escaneando actas viejas buscando un SEGUNDO valor de capacidad para cruzar
+(`necesitaMasCapacidad`, Codigo.gs línea 3288). El job asíncrono (`alcance_combiner.py`) no
+implementa ese cruce todavía — solo se detiene cuando los campos obligatorios ya están
+completos. No afecta la corrección del resultado (nunca inventa nada), solo que no avisa
+proactivamente si dos actas declaran capacidades distintas cuando la primera ya alcanzó para
+completar el spec.
+
 ## Estructura
 
 ```
@@ -108,6 +130,7 @@ reproduciendo exactamente el SKU/precio que se validó a mano con Dinovi.
   actas_start.py            → crea el job de actas de un CO y procesa la primera
   actas_step.py             → procesa UNA acta más del job (el frontend hace polling)
   actas_status.py           → progreso/resultado actual, sin avanzar el job
+  analizar_alcance.py       → orquestador final: acta+hojas+catálogo -> propuesta de equipos
   opex_resolver.py          → operador + mano de obra de un CO (síncrono, sin LLM)
   cron_reintentos.py        → red de seguridad: avanza jobs que quedaron a medias
 /core
@@ -136,6 +159,9 @@ reproduciendo exactamente el SKU/precio que se validó a mano con Dinovi.
     propuesta_tc.py / propuesta_tc_calculo.py → CAPEX: resolución de TC (la rama más compleja)
     propuesta_tp_medidor.py                   → CAPEX: resolución de TP y Medidor
     propuesta_bloque_celda_cable.py             → CAPEX: resolución de Bloque de pruebas, Celda y Cable
+    hoja_origen_equipos.py                        → CAPEX: hoja "Data" (cliente/OR/maniobra) + hoja "Equipos" existente
+    certificado_extractor.py                       → CAPEX: relación certificada de un TC/TP ya instalado (módulo puro)
+    alcance_provisional.py                          → CAPEX: orquestador final (puerto de analizarAlcanceProvisional)
     tarifa_calculator.py              → OPEX: normalización + matcher por palabras clave contra ref_tarifario
     opex_desde_equipos.py             → OPEX: maniobras por tipo de medida × ubicación (verificado contra la hoja real)
     operator_resolver.py              → OPEX: hoja "Data" -> acta más reciente -> manual
