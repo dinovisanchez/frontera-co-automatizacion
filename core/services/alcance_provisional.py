@@ -9,7 +9,7 @@ resultado YA COMBINADO de ese job (o None si se marcó "sin actas" o no hay ning
 
 import re
 
-from core.services.catalogo_capex import obtener_catalogo_ref_capex
+from core.services.catalogo_capex import candidatos_por_categoria_alcance, obtener_catalogo_ref_capex
 from core.services.certificado_extractor import extraer_ratio_de_certificado_calibracion
 from core.services.clasificador_medida import NtCambio, clasificar_tipo_medida
 from core.services.deteccion_equipos import detectar_secciones_deficientes, equipos_actuales_metabase
@@ -107,6 +107,11 @@ def analizar_alcance_provisional(sheets, llm, co_raw: str, dictamen: dict, acta_
         "motivo": diagnostico.motivo, "reclasificado": diagnostico.reclasificado,
     }
     catalogo = obtener_catalogo_ref_capex(sheets)
+    # Candidatos por categoría para el desplegable de "+ Agregar fila manual" del frontend
+    # (Dinovi, 2026-09-23) — antes una fila manual (ej. Cable) no traía ningún SKU sugerido y
+    # había que escribirlo a mano; ahora se le pasa la MISMA lista de candidatos que ya arma
+    # candidatos_por_categoria_alcance para "Recuperable".
+    catalogo_manual = {cat: candidatos_por_categoria_alcance(catalogo, cat) for cat in ("medidor", "tc", "tp", "bloque_pruebas", "cable", "celda")}
 
     hay_burden_desigual = bool((equipos_actuales.get("tc") or {}).get("burdenes_desiguales") or (equipos_actuales.get("tp") or {}).get("burdenes_desiguales"))
     if dictamen.get("clasificacion") == "normalizacion" or diagnostico.reclasificado or hay_burden_desigual:
@@ -142,4 +147,5 @@ def analizar_alcance_provisional(sheets, llm, co_raw: str, dictamen: dict, acta_
         "nt_cambio": nt_cambio_raw, "norm_indirectas": norm_indirectas, "maestro": maestro,
         "acta": acta_resultado, "spec": spec, "diagnostico": diagnostico_dict,
         "secciones": dictamen.get("secciones"), "propuesta": resultado["propuesta"], "alertas": alertas,
+        "catalogo_manual": catalogo_manual,
     }

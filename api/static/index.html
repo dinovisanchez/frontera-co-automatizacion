@@ -619,13 +619,18 @@
         var cat = document.getElementById(id + '_selCategoriaManual').value;
         var etiqueta = ETIQUETAS_EQUIPO_ALCANCE[cat];
         var actual = (cat && res.equipos_actuales) ? res.equipos_actuales[cat] : null;
+        // Candidatos del catálogo ref_capex para esa categoría (Dinovi, 2026-09-23: quiere el
+        // mismo desplegable de SKU que ya trae una fila auto-detectada, también al agregar
+        // una a mano, ej. Cable) — viene ya armado del backend en res.catalogo_manual.
+        var candidatos = (cat && res.catalogo_manual) ? (res.catalogo_manual[cat] || []) : [];
         agregarFilaAlcance(id, estado, {
           grupo: etiqueta ? etiqueta.grupo : 'Manual',
           cantidad: 1,
           tipo: etiqueta ? etiqueta.tipo : '',
-          sku: actual ? (actual.sku || '') : '',
+          sku: actual ? (actual.sku || '') : (candidatos[0] ? candidatos[0].sku : ''),
+          costo_estimado: actual ? null : (candidatos[0] ? candidatos[0].costo : null),
           razon: actual ? 'Fila manual — precargada con el equipo actualmente instalado (' + describirCondicionActualCliente(actual) + ').' : '',
-          alternativas: []
+          alternativas: actual ? candidatos : candidatos.slice(1)
         });
       });
 
