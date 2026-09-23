@@ -572,6 +572,14 @@
       html += '<div id="' + id + '_opexBody" style="display:none;margin-top:10px;">';
       html += '<div class="req-note" style="margin:0 0 8px;padding:0;border:none;">Solo vista previa — no se guarda en ninguna hoja.</div>';
       html += '<label class="checkbox-line" style="margin-top:0;"><input type="checkbox" id="' + id + '_instalacionNueva" /> Es instalación nueva (no hay equipo previo que retirar)</label>';
+      var ubicacionDetectada = (res.spec || {}).ubicacion_medida || '';
+      html += '<label style="margin-top:10px;">Ubicación de la medida' + (ubicacionDetectada ? ' (detectada: ' + escapeHtml(ubicacionDetectada) + ')' : ' (no se pudo determinar automáticamente)') + '</label>';
+      html += '<select id="' + id + '_ubicacion">' +
+        '<option value=""' + (ubicacionDetectada ? '' : ' selected') + '>(sin determinar)</option>' +
+        '<option value="interior"' + (ubicacionDetectada === 'interior' ? ' selected' : '') + '>Interior</option>' +
+        '<option value="exterior"' + (ubicacionDetectada === 'exterior' ? ' selected' : '') + '>Exterior</option>' +
+        '</select>';
+      html += '<div class="req-note" style="margin:2px 0 0;padding:0;border:none;">Si la cambias (ej. de interior a exterior), la mano de obra usa la nueva ubicación en TODO — montaje/desmonte del equipo, del gabinete, y en indirecta también el extra de cambio de crucetas en MT (solo exterior).</div>';
       html += '<label style="margin-top:10px;">OR manual (opcional, deja vacío para resolverlo solo)</label>';
       html += '<input id="' + id + '_orManual" placeholder="' + escapeHtml(res.or || 'ej. EPM ANTIOQUIA') + '" />';
       html += '<button id="' + id + '_btnOpex" class="secondary-btn">Calcular mano de obra</button>';
@@ -717,7 +725,7 @@
           co: res.co,
           tipo_medida_final: d.tipo_medida_final,
           tipo_medida_actual: d.tipo_medida_actual,
-          ubicacion: (res.spec || {}).ubicacion_medida || null,
+          ubicacion: document.getElementById(id + '_ubicacion').value || null,
           secciones: seccionesEfectivas,
           es_instalacion_nueva: document.getElementById(id + '_instalacionNueva').checked,
           filas_cable: filasCable,
