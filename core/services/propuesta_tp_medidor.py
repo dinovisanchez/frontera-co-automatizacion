@@ -19,12 +19,18 @@ def resolver_propuesta_tp(ctx: dict, propuesta: list[dict], alertas: list[str]) 
 
     if resuelto:
         texto_original = resuelto.get("texto_original")
+        sku_tp = resuelto["item"]["sku"]
+        if ctx["elementos"] == 2 and "√3" in (sku_tp or ""):
+            # Confirmado con CO0500001569 (Dinovi, 2026-09-22): "√3" es notación de trifásico
+            # (mide fase-neutro); un sistema bifásico mide fase-fase directo, sin ese factor —
+            # la hoja de ingeniería puede traer un TP mal calculado para este caso puntual.
+            alertas.append(f'⚠️ El TP de "{resuelto["fuente"]}" ("{sku_tp}") usa notación √3 (trifásico), pero este CO es bifásico (2 elementos) — revisa si el TP correcto debería ser sin √3 (medición fase-fase) antes de guardarlo.')
         propuesta.append({
             # Mismo criterio que TC: el número de fases del acta manda sobre la "Cantidad" de
             # la hoja (Dinovi, 2026-09-22) — la hoja es solo respaldo si el acta no dice nada.
             "grupo": "TP", "cantidad": ctx["elementos"] or resuelto.get("cantidad"), "tipo": "Transformador de potencial",
             "razon": f'Según "{resuelto["fuente"]}" (ya calculado para este CO)' + (f': "{texto_original}"' if texto_original else "") + ".",
-            "sku": resuelto["item"]["sku"], "costo_estimado": resuelto["item"]["costo"], "alternativas": [], "requiere_confirmacion": False,
+            "sku": sku_tp, "costo_estimado": resuelto["item"]["costo"], "alternativas": [], "requiere_confirmacion": False,
         })
         return
 

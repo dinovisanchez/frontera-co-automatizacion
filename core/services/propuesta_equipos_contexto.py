@@ -29,10 +29,13 @@ def _armar_contexto(
     faltan = dictamen.get("secciones") or {}
 
     # 3 elementos por defecto (trifásico tetrafilar) salvo que el acta/hoja diga 2 — pero si
-    # Indirecta viene de RECLASIFICAR un esquema Semidirecta/BT (Art.19), siempre se fuerza el
-    # set completo de 3: al subir el punto de medición a MT se instala metering tetrafilar
-    # completo, no se hereda el esquema de abajo.
-    elementos = 3 if (tipo_medida == "indirecta" and diagnostico["reclasificado"]) else (diagnostico.get("elementos") or 3)
+    # Indirecta viene de RECLASIFICAR un esquema Semidirecta/BT (Art.19), se fuerza el set
+    # completo de 3: al subir el punto de medición a MT se instala metering tetrafilar
+    # completo, no se hereda el esquema de abajo. EXCEPCIÓN confirmada con CO0500001569
+    # (Dinovi, 2026-09-22): si el transformador es genuinamente BIFÁSICO (2 fases físicas,
+    # ej. maestro.conexion="bifasica"), no se le puede inventar una tercera fase solo porque
+    # se reclasificó — ahí sí se respetan los 2 elementos.
+    elementos = 3 if (tipo_medida == "indirecta" and diagnostico["reclasificado"] and diagnostico.get("elementos") != 2) else (diagnostico.get("elementos") or 3)
     fases_medidor = diagnostico.get("fases_medidor") if isinstance(diagnostico.get("fases_medidor"), int) else elementos
 
     if diagnostico["reclasificado"]:
