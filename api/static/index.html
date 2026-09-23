@@ -785,7 +785,7 @@
       if (opex.filas.length) {
         html += '<div style="overflow-x:auto;"><table id="' + idTabla + '" style="width:100%;border-collapse:collapse;font-size:12px;">';
         html += '<thead><tr style="text-align:left;color:var(--text-sub);border-bottom:1px solid var(--border-soft);">' +
-          '<th style="padding:5px 6px;"></th><th style="padding:5px 6px;">Maniobra</th><th style="padding:5px 6px;">Origen</th>' +
+          '<th style="padding:5px 6px;">Excl.</th><th style="padding:5px 6px;">Maniobra</th><th style="padding:5px 6px;">Origen</th>' +
           '<th style="padding:5px 6px;text-align:right;">Cant.</th><th style="padding:5px 6px;text-align:right;">Unitario</th>' +
           '<th style="padding:5px 6px;text-align:right;">Total MO</th><th style="padding:5px 6px;text-align:right;">Carro canasta</th>' +
           '<th style="padding:5px 6px;text-align:right;">Descargo</th><th style="padding:5px 6px;text-align:right;">Acompañ.</th>' +
@@ -795,7 +795,7 @@
           var idExcluirOpex = idTabla + '_excluir' + i;
           html += '<tr id="' + idTabla + '_fila' + i + '" style="border-bottom:1px solid var(--border-soft);">' +
             '<td style="padding:5px 6px;white-space:nowrap;">' +
-            '<input type="checkbox" id="' + idExcluirOpex + '" title="excluir" style="margin:0;" />' +
+            '<input type="checkbox" id="' + idExcluirOpex + '" title="excluir" style="margin:0;width:16px;height:16px;accent-color:var(--red);cursor:pointer;" />' +
             '</td>' +
             '<td style="padding:5px 6px;">' + escapeHtml(f.maniobra) + '</td>' +
             '<td style="padding:5px 6px;color:var(--text-faint);">' + escapeHtml(ORIGEN_LABEL_OPEX[f.origen] || f.origen) + '</td>' +
