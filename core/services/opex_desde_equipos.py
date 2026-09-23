@@ -128,6 +128,14 @@ def _resolver_medidor(r: _Resolver, tipo_medida_final: str, tipo_medida_actual: 
     r.agregar_directo(ret, 1, "auto-pareja", f"retiro de medidor ({tipo_retiro})")
 
 
+# CO0800001175 (Dinovi, 2026-09-23): "Instalación indirecta exterior: medidor + BP + módem +
+# toma 110 V (sin Montaje  TCs/TPs MT)" también contiene las palabras "montaje"/"tcs"/"tps"/
+# "mt"/ubicación (las menciona para ACLARAR que esa maniobra NO las incluye) — eso empataba
+# con la búsqueda real de "Montaje TCs/TPs MT" y la volvía ambigua (2 candidatas → None), así
+# que nunca se proponía el montaje aunque la hoja SÍ tiene una fila propia para eso.
+_EXCLUIDAS_MONTAJE_TC_TP = ["instalacion"]
+
+
 def _resolver_tc_tp(r: _Resolver, tipo_medida_final: str, tipo_medida_actual: str | None, ubicacion: str | None, hay_tc: bool, hay_tp: bool) -> bool:
     """Devuelve True si se agregó algo de TC/TP en MT (dispara extra_fija_mt).
 
@@ -153,16 +161,16 @@ def _resolver_tc_tp(r: _Resolver, tipo_medida_final: str, tipo_medida_actual: st
 
     if hay_tc:
         if ya_era_indirecta:
-            r.con_contraparte(["montaje", "tcs", "mt", ubicacion], ["desmonte", "tcs", "mt", ubicacion], 1, "TCs en MT")
+            r.con_contraparte(["montaje", "tcs", "mt", ubicacion], ["desmonte", "tcs", "mt", ubicacion], 1, "TCs en MT", _EXCLUIDAS_MONTAJE_TC_TP)
         else:
-            r.agregar_directo(tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["montaje", "tcs", "mt", ubicacion]), 1, "equipo", "montaje de TCs en MT")
+            r.agregar_directo(tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["montaje", "tcs", "mt", ubicacion], _EXCLUIDAS_MONTAJE_TC_TP), 1, "equipo", "montaje de TCs en MT")
             if not r.es_instalacion_nueva and tipo_retiro == "semidirecta":
                 r.agregar_directo(tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["retiro", "tcs", "semidirecta"]), 1, "auto-pareja", "retiro de TCs (semidirecta, pasa a MT)")
     if hay_tp:
         if ya_era_indirecta:
-            r.con_contraparte(["montaje", "tps", "mt", ubicacion], ["desmonte", "tps", "mt", ubicacion], 1, "TPs en MT")
+            r.con_contraparte(["montaje", "tps", "mt", ubicacion], ["desmonte", "tps", "mt", ubicacion], 1, "TPs en MT", _EXCLUIDAS_MONTAJE_TC_TP)
         else:
-            r.agregar_directo(tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["montaje", "tps", "mt", ubicacion]), 1, "equipo", "montaje de TPs en MT")
+            r.agregar_directo(tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["montaje", "tps", "mt", ubicacion], _EXCLUIDAS_MONTAJE_TC_TP), 1, "equipo", "montaje de TPs en MT")
             # tipo_retiro directa/semidirecta: TP nunca existió antes, no hay nada que retirar
     return True
 
