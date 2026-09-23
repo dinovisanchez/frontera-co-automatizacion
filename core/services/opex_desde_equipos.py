@@ -88,6 +88,9 @@ class _Resolver:
         self._agregar(tc.buscar_maniobra_por_palabras(self.maniobras_reales, ["apertura", "portacircuito"]), 3, "extra-fija", "apertura de portacircuito")
         if ubicacion == "exterior":
             self._agregar(tc.buscar_maniobra_por_palabras(self.maniobras_reales, ["cambio", "crucetas", "mt", "exterior"]), 1, "extra-fija", "cambio de crucetas en MT (exterior)")
+            # Confirmado por Dinovi, 2026-09-23: extra fija en exterior, igual patrón que las
+            # crucetas (misma línea de arriba) — 3 unidades por visita.
+            self._agregar(tc.buscar_maniobra_por_palabras(self.maniobras_reales, ["cambio", "pararrayos"]), 3, "extra-fija", "cambio de pararrayos")
         if self.es_instalacion_nueva:
             self._agregar(tc.buscar_maniobra_por_palabras(self.maniobras_reales, ["cambio", "dps"]), 6, "extra-fija", "cambio de DPS")
         else:
