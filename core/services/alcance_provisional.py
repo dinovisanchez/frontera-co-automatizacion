@@ -41,26 +41,34 @@ def _ubicacion_desde_nt_cambio(nt_cambio_raw: dict | None) -> str | None:
     return None
 
 
-def _mezclar_hoja_maestra(spec: dict, maestro: dict | None, or_real: str | None) -> None:
+def _mezclar_hoja_maestra(spec: dict, maestro: dict | None, or_real: str | None) -> bool:
     """Rellena huecos del spec con la hoja maestra, pero NUNCA sobreescribe lo que una acta ya
     dijo explícitamente — una acta reciente puede reflejar un cambio que la hoja maestra
-    todavía no tiene. tipo_medida_actual usa RATCHET (nunca degrada, ver clasificador_medida)."""
+    todavía no tiene. tipo_medida_actual usa RATCHET (nunca degrada, ver clasificador_medida).
+
+    Devuelve True si `trafo_uso` se rellenó DESDE la hoja maestra (no vino de ninguna acta) —
+    el llamador lo usa para avisar cuando ese dato termina disparando una reclasificación a
+    Indirecta sin que ninguna acta lo haya confirmado (ver CO0800000348, Dinovi 2026-09-23).
+    """
     if not maestro:
-        return
+        return False
     _rank = {"indirecta": 3, "semidirecta": 2, "directa": 1}.get
 
     if maestro.get("medida") and (_rank(maestro["medida"]) or 0) > (_rank(spec.get("tipo_medida_actual")) or 0):
         spec["tipo_medida_actual"] = maestro["medida"]
     if spec.get("capacidad_instalada_kva") is None and maestro.get("capacidad_transformador") is not None:
         spec["capacidad_instalada_kva"] = maestro["capacidad_transformador"]
+    trafo_uso_desde_maestro = False
     if spec.get("trafo_uso") is None and maestro.get("propiedad_activos"):
         spec["trafo_uso"] = maestro["propiedad_activos"]
+        trafo_uso_desde_maestro = True
     if spec.get("elementos_medida") is None and maestro.get("elementos") is not None:
         spec["elementos_medida"] = maestro["elementos"]
     if spec.get("fases_medidor") is None and maestro.get("fases") is not None:
         spec["fases_medidor"] = maestro["fases"]
     if spec.get("factor_fx") is None and isinstance(maestro.get("factor_fx"), (int, float)):
         spec["factor_fx"] = maestro["factor_fx"]
+    return trafo_uso_desde_maestro
 
 
 def analizar_alcance_provisional(sheets, llm, co_raw: str, dictamen: dict, acta_resultado: dict | None, filas_metabase_co: list[dict]) -> dict:
@@ -71,7 +79,7 @@ def analizar_alcance_provisional(sheets, llm, co_raw: str, dictamen: dict, acta_
 
     spec = dict(acta_resultado["spec"]) if acta_resultado else {}
     maestro = buscar_en_hoja_maestra(sheets, co)
-    _mezclar_hoja_maestra(spec, maestro, origen["or"])
+    trafo_uso_desde_maestro = _mezclar_hoja_maestra(spec, maestro, origen["or"])
 
     nt_cambio_raw = buscar_en_hoja_cambio_nt(sheets, co)
     norm_indirectas = buscar_en_hoja_normalizaciones_indirectas(sheets, co)
@@ -134,6 +142,13 @@ def analizar_alcance_provisional(sheets, llm, co_raw: str, dictamen: dict, acta_
         alertas.insert(0, f'⚠ Ninguna acta indicó interior/exterior — se asumió "{spec["ubicacion_medida"]}" por ser OR {origen["or"]}. Confirma que sea correcto (excepción: centros comerciales suelen ser interior).')
     if ubicacion_sobrescrita_por_nt:
         alertas.insert(0, f'⚠ El acta indicaba ubicación "{ubicacion_previa_acta}", pero "Data cambio NT" ya trae el TC/TP calculado como "{spec["ubicacion_medida"]}" para el esquema MT nuevo de este CO reclasificado — se usó el de "Data cambio NT" (más confiable para el punto de medición nuevo que un acta que puede describir el esquema viejo o ser de otra visita). Confirma que sea correcto.')
+    if trafo_uso_desde_maestro and diagnostico.reclasificado and diagnostico.uso_transformador == "exclusivo":
+        # CO0800000348 (Dinovi, 2026-09-23): reclasificó a Indirecta con trafo_uso="exclusivo"
+        # tomado de la hoja maestra (ninguna acta lo confirmó — en este caso porque la acta
+        # INFR pesaba 42MB y nunca se pudo leer), pero la acta/Lovable SÍ decían "compartido" —
+        # Art.19 no aplica a un transformador compartido. No hay forma de saber cuál es
+        # correcto sin leer la acta real, así que se avisa en vez de decidir en silencio.
+        alertas.insert(0, '🔴 ATENCIÓN: esta reclasificación a Indirecta (Art.19) asume transformador de uso EXCLUSIVO tomado de la hoja MAESTRA — ninguna acta lo confirmó. Si el acta o Lovable dicen que el transformador es COMPARTIDO, esta reclasificación NO aplica (Art.19 es solo para exclusivo) y el alcance real es Normalización del esquema actual, no cambio de Nivel de Tensión. Verifica el acta antes de guardar.')
     if acta_resultado and acta_resultado.get("capacidades_encontradas"):
         vals = " vs. ".join(f'{c["valor"]} kVA ({c["etiqueta"]})' for c in acta_resultado["capacidades_encontradas"])
         alertas.insert(0, f"⚠ Las actas de este CO no coinciden en la capacidad instalada del transformador: {vals} — confirma cuál es la correcta antes de usar el TC/TP propuesto.")
