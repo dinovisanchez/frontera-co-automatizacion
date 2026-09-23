@@ -10,8 +10,11 @@ Body esperado:
   "secciones": {"medidor": true, "tc": true, "tp": true, "bloque_pruebas": true, "celda": false},
   "es_instalacion_nueva": false,      # true si no hay equipo previo que retirar/desmontar
   "filas_cable": [{"grupo": "Cable señal", "cantidad": 1}],  # opcional — cable no tiene maniobra propia, solo fuzzy-match
-  "tipo_medida_actual": "directa"     # opcional — solo si hubo cambio de nivel de tensión (Art.19):
+  "tipo_medida_actual": "directa",    # opcional — solo si hubo cambio de nivel de tensión (Art.19):
                                        # el retiro del medidor es del tipo ACTUAL, no del final
+  "celda_sku": "Celda AE-325"         # opcional — SKU elegido en CAPEX para "Celda": en
+                                       # semidirecta/indirecta casi ninguna celda tiene maniobra
+                                       # propia, EXCEPTO "Celda AE-325" (ver opex_desde_equipos.py)
 }
 
 Por qué este contrato (no "filas_equipos" genérico como antes): se verificó la hoja real de
@@ -48,6 +51,7 @@ def opex_resolver():
     ubicacion = body.get("ubicacion")
     filas_cable = body.get("filas_cable") or []
     tipo_medida_actual = body.get("tipo_medida_actual")
+    celda_sku = body.get("celda_sku")
 
     deps = construir_dependencias(requiere_metabase=False)
 
@@ -62,7 +66,7 @@ def opex_resolver():
 
     resultado = construir_opex_desde_equipos(
         deps.sheets, co, or_raw, tipo_medida_final, ubicacion, secciones, es_instalacion_nueva, filas_cable,
-        tipo_medida_actual=tipo_medida_actual,
+        tipo_medida_actual=tipo_medida_actual, celda_sku=celda_sku,
     )
 
     return jsonify({

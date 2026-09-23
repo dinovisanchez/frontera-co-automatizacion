@@ -694,6 +694,17 @@
         ['medidor', 'tc', 'tp', 'bloque_pruebas', 'celda', 'cable'].forEach(function (k) {
           seccionesEfectivas[k] = seccionActivaParaOpex(k);
         });
+        // SKU de celda YA confirmado en CAPEX (puede diferir del sugerido si el usuario lo
+        // cambió) — casi ninguna celda tiene maniobra propia en semidirecta/indirecta, EXCEPTO
+        // "Celda AE-325" (Dinovi, 2026-09-23, CO0800001175), así que opex_resolver necesita
+        // saber cuál se eligió para poder detectar ese caso puntual.
+        var celdaSku = null;
+        estado.filas.forEach(function (f) {
+          if (categoriaDesdeGrupo(f.grupo) === 'celda' && !document.getElementById(f.idExcluir).checked) {
+            var v = document.getElementById(f.idSku).value.trim();
+            if (v) celdaSku = v;
+          }
+        });
         var orManual = document.getElementById(id + '_orManual').value.trim();
         var body = {
           co: res.co,
@@ -702,7 +713,8 @@
           ubicacion: (res.spec || {}).ubicacion_medida || null,
           secciones: seccionesEfectivas,
           es_instalacion_nueva: document.getElementById(id + '_instalacionNueva').checked,
-          filas_cable: filasCable
+          filas_cable: filasCable,
+          celda_sku: celdaSku
         };
         if (orManual) body.or_manual = orManual;
 

@@ -202,10 +202,26 @@ def _resolver_gabinete(r: _Resolver, tipo_medida_final: str, tipo_medida_actual:
         r.agregar_directo(ret, 1, "auto-pareja", f"retiro de gabinete ({ubicacion})")
 
 
+def _resolver_gabinete_mt(r: _Resolver, celda_sku: str | None) -> None:
+    """En semidirecta/indirecta, "Celda" normalmente NO tiene maniobra propia en
+    ref_tarifario (confirmado leyendo la hoja real) — EXCEPCIÓN encontrada por Dinovi,
+    2026-09-23 (CO0800001175): el modelo "Celda AE-325" (categoría "Celda en MT" del
+    catálogo CAPEX) sí tiene su propia línea, y viene COMBINADA (instalación + retiro en una
+    sola maniobra, a diferencia del resto de gabinetes que sí se separan). Si el SKU de celda
+    elegido en CAPEX no es ese modelo puntual, se mantiene la alerta de agregar a mano — no
+    hay evidencia de que otras variantes de celda en MT tengan maniobra propia.
+    """
+    if celda_sku and "325" in celda_sku:
+        match = tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["gabinete", "325"])
+        r.agregar_directo(match, 1, "equipo", "instalación y retiro de gabinete AE-325")
+        return
+    r.alertas.append('"Celda" no tiene ninguna maniobra propia en ref_tarifario — agrégala a mano.')
+
+
 def construir_opex_desde_equipos(
     sheets: SheetsClient, co: str, or_raw: str, tipo_medida_final: str, ubicacion: str | None,
     secciones: dict, es_instalacion_nueva: bool, filas_cable: list[dict] | None = None,
-    tipo_medida_actual: str | None = None,
+    tipo_medida_actual: str | None = None, celda_sku: str | None = None,
 ) -> ResultadoOpexDesdeEquipos:
     """`tipo_medida_actual`: tipo de medida ANTES del cambio (ej. "directa"/"semidirecta") —
     solo importa cuando difiere de `tipo_medida_final` (cambio de nivel de tensión/Art.19):
@@ -229,7 +245,7 @@ def construir_opex_desde_equipos(
         if tipo_medida_final == "directa":
             _resolver_gabinete(r, tipo_medida_final, tipo_medida_actual, ubicacion)
         else:
-            alertas.append('"Celda" no tiene ninguna maniobra propia en ref_tarifario — agrégala a mano.')
+            _resolver_gabinete_mt(r, celda_sku)
 
     for f in filas_cable or []:
         texto_cable = f.get("grupo") or f.get("tipo")
