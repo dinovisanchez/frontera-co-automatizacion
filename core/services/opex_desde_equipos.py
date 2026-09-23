@@ -178,22 +178,33 @@ def _resolver_tc_tp(r: _Resolver, tipo_medida_final: str, tipo_medida_actual: st
     return True
 
 
-def _resolver_gabinete(r: _Resolver, tipo_medida_final: str, tipo_medida_actual: str | None, ubicacion: str | None, celda_sku: str | None = None) -> None:
-    """En Directa, "Celda" en CAPEX es en realidad un gabinete de medida (metálico o
-    policarbonato) — confirmado por Dinovi, 2026-09-22: SÍ existe maniobra propia en
-    ref_tarifario ("Instalación gabinete de medida... sobrepuesto interior/exterior"), a
-    diferencia de semidirecta/indirecta donde "Celda" de verdad no tiene ninguna.
+def _resolver_celda_gabinete(r: _Resolver, tipo_medida_final: str, tipo_medida_actual: str | None, ubicacion: str | None, celda_sku: str | None) -> None:
+    """"Celda" en CAPEX puede ser dos cosas MUY distintas en ref_tarifario:
 
-    Montaje (Dinovi, 2026-09-23, CO0800001175): si el SKU de celda ya dice "poste" o
-    "fachada" (ej. "Celda para medidor y Bornera de POSTE" — el texto real que trae "Data
-    cambio NT" para este caso), se usa la maniobra puntual "... exterior (fachada/poste)" —
-    la misma línea cubre metálico Y policarbonato, así que no hace falta distinguir material.
-    Si no hay esa pista, se asume "sobrepuesto" (el más común) y se alerta para confirmar.
+    (a) Un gabinete de medida metálico o policarbonato (poste/sobrepuesto/empotrado) — el
+    catálogo lo llama "Celda de medida" (AE-301/305/306/319, "Celda de policarbonato...",
+    "Celda para medidor y Bornera de poste"). SÍ tiene maniobra propia, y NO depende del tipo
+    de medida: confirmado con CO0800001175 (directa) Y con CO0600001181 (Dinovi, 2026-09-23:
+    semidirecta con "Celda de policarbonato de 3/4 homologada"/"Celda AE-305" — el mismo tipo
+    de gabinete, la misma maniobra aplica). Antes esto solo se resolvía para "directa" — era
+    una restricción mía sin evidencia de semidirecta, ya corregida.
+
+    (b) Una celda real de MT — el catálogo la llama "Celda en MT" (solo existe "Celda AE-325"
+    ahí). Esa SÍ tiene su propia línea en ref_tarifario, pero COMBINADA (instalación + retiro
+    en una sola maniobra, a diferencia de (a) que sí se separa). Cualquier otra celda de MT
+    que no sea AE-325 sigue sin maniobra propia (no hay evidencia de que exista).
+
+    Montaje de (a) (Dinovi, 2026-09-23, CO0800001175): si el SKU dice "poste"/"fachada" se usa
+    la maniobra puntual "... exterior (fachada/poste)" (cubre metálico y policarbonato en una
+    sola línea). Si no hay esa pista, se asume "sobrepuesto" (el más común) y se alerta.
     """
-    if tipo_medida_final != "directa":
+    if celda_sku and "325" in celda_sku:
+        match = tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["gabinete", "325"])
+        r.agregar_directo(match, 1, "equipo", "instalación y retiro de gabinete AE-325")
         return
+
     if ubicacion not in ("interior", "exterior"):
-        r.alertas.append('No se conoce la ubicación (interior/exterior) — no se puede tarifar el gabinete, agrégalo a mano.')
+        r.alertas.append('No se conoce la ubicación (interior/exterior) — no se puede tarifar el gabinete/celda, agrégalo a mano.')
         return
 
     es_poste = bool(celda_sku) and ("poste" in celda_sku.lower() or "fachada" in celda_sku.lower())
@@ -207,27 +218,12 @@ def _resolver_gabinete(r: _Resolver, tipo_medida_final: str, tipo_medida_actual:
             r.alertas.append('ℹ️ Se asumió gabinete "sobrepuesto" para tarifar la instalación — si en realidad es empotrado o el especial de fachada/poste, ajusta la maniobra a mano en la hoja OPEX.')
 
     tipo_retiro = tipo_medida_actual or tipo_medida_final
-    if not r.es_instalacion_nueva and tipo_retiro == "directa":
-        # El retiro solo aplica si YA había un gabinete de directa antes (si viene de otro tipo
-        # de medida, nunca hubo gabinete que retirar).
+    if not r.es_instalacion_nueva and tipo_retiro in ("directa", "semidirecta"):
+        # El retiro solo aplica si YA había un gabinete metálico/policarbonato antes (directa o
+        # semidirecta) — si viene de indirecta, lo que había era una celda de MT distinta, sin
+        # maniobra de retiro conocida para ese caso.
         ret = tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["retiro", "gabinete", ubicacion])
         r.agregar_directo(ret, 1, "auto-pareja", f"retiro de gabinete ({ubicacion})")
-
-
-def _resolver_gabinete_mt(r: _Resolver, celda_sku: str | None) -> None:
-    """En semidirecta/indirecta, "Celda" normalmente NO tiene maniobra propia en
-    ref_tarifario (confirmado leyendo la hoja real) — EXCEPCIÓN encontrada por Dinovi,
-    2026-09-23 (CO0800001175): el modelo "Celda AE-325" (categoría "Celda en MT" del
-    catálogo CAPEX) sí tiene su propia línea, y viene COMBINADA (instalación + retiro en una
-    sola maniobra, a diferencia del resto de gabinetes que sí se separan). Si el SKU de celda
-    elegido en CAPEX no es ese modelo puntual, se mantiene la alerta de agregar a mano — no
-    hay evidencia de que otras variantes de celda en MT tengan maniobra propia.
-    """
-    if celda_sku and "325" in celda_sku:
-        match = tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["gabinete", "325"])
-        r.agregar_directo(match, 1, "equipo", "instalación y retiro de gabinete AE-325")
-        return
-    r.alertas.append('"Celda" no tiene ninguna maniobra propia en ref_tarifario — agrégala a mano.')
 
 
 def construir_opex_desde_equipos(
@@ -254,10 +250,7 @@ def construir_opex_desde_equipos(
     r.revision_frontera_si_cambio()
 
     if secciones.get("celda"):
-        if tipo_medida_final == "directa":
-            _resolver_gabinete(r, tipo_medida_final, tipo_medida_actual, ubicacion, celda_sku)
-        else:
-            _resolver_gabinete_mt(r, celda_sku)
+        _resolver_celda_gabinete(r, tipo_medida_final, tipo_medida_actual, ubicacion, celda_sku)
 
     for f in filas_cable or []:
         texto_cable = f.get("grupo") or f.get("tipo")
