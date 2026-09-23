@@ -46,9 +46,15 @@ def buscar_candidatos_tc(
         tc = item["tc"]
         if tc["burden"] != burden_requerido:
             return -1
+        # Clase de tensión: DESCALIFICA, no solo penaliza — un TC de 0.72kV (BT) no se puede usar
+        # en un circuito de 17.5kV (MT) ni viceversa, no es una cuestión de "mejor ajuste" como la
+        # ubicación o el montaje. Antes esto era una penalización (-6) que un acierto de relación
+        # (+5) podía superar, dejando pasar un TC de BT como "el mejor candidato" para un CO MT
+        # (Dinovi, 2026-09-23, CO0100001344: interior + cambio de NT a Indirecta sugirió "TC 400/5
+        # ... T 0.72 kV" solo porque esa relación sí existía en el catálogo de BT).
+        if kv_requerido is not None and tc["kv"] is not None and abs(tc["kv"] - kv_requerido) >= 0.01:
+            return -1
         p = 3
-        if kv_requerido is not None and tc["kv"] is not None:
-            p += 3 if abs(tc["kv"] - kv_requerido) < 0.01 else -6
         if ubicacion_requerida and tc["ubicacion"]:
             p += 2 if tc["ubicacion"] == ubicacion_requerida else -2
         if not preferir_con_cable and montaje_requerido and tc["montaje"]:
