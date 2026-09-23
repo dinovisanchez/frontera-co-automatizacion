@@ -7,6 +7,8 @@ actas_start.py/actas_step.py, una acta por invocación — ver README). `acta_re
 resultado YA COMBINADO de ese job (o None si se marcó "sin actas" o no hay ninguna).
 """
 
+import re
+
 from core.services.catalogo_capex import obtener_catalogo_ref_capex
 from core.services.certificado_extractor import extraer_ratio_de_certificado_calibracion
 from core.services.clasificador_medida import NtCambio, clasificar_tipo_medida
@@ -16,6 +18,27 @@ from core.services.hojas_ingenieria import buscar_en_hoja_cambio_nt, buscar_en_h
 from core.services.propuesta_equipos import construir_propuesta_equipos
 from core.services.resolucion_tc_tp import inferir_ubicacion_por_or
 from core.utils import normalizar_codigo
+
+
+def _ubicacion_desde_nt_cambio(nt_cambio_raw: dict | None) -> str | None:
+    """"Data cambio NT" trae el TC/TP que ingeniería YA calculó para el esquema MT nuevo de un
+    CO reclasificado (Art.19) — su SKU declara "Interior"/"Exterior" explícitamente (ej. "TC
+    5-10/5 Exterior..."). Es más confiable que un acta para este dato puntual, porque una acta
+    puede describir el esquema BT viejo o ser de una visita sin relación con la reclasificación
+    (confirmado por Dinovi, 2026-09-23, CO0800000230: el acta usada era una visita de falla de
+    módem — nada que ver con la instalación MT — y traía "interior" mientras "Data cambio NT"
+    ya tenía el TC/TP calculados como "Exterior"). "Normalizaciones_Indirectas" no sirve para
+    esto: su columna "TC/TP relación" es solo el ratio ("10/5"), sin texto de ubicación.
+    """
+    if not nt_cambio_raw:
+        return None
+    for campo in ("sku_tcs", "sku_tps"):
+        texto = nt_cambio_raw.get(campo) or ""
+        if re.search(r"exterior", texto, re.I):
+            return "exterior"
+        if re.search(r"interior", texto, re.I):
+            return "interior"
+    return None
 
 
 def _mezclar_hoja_maestra(spec: dict, maestro: dict | None, or_real: str | None) -> None:
@@ -50,17 +73,22 @@ def analizar_alcance_provisional(sheets, llm, co_raw: str, dictamen: dict, acta_
     maestro = buscar_en_hoja_maestra(sheets, co)
     _mezclar_hoja_maestra(spec, maestro, origen["or"])
 
+    nt_cambio_raw = buscar_en_hoja_cambio_nt(sheets, co)
+    norm_indirectas = buscar_en_hoja_normalizaciones_indirectas(sheets, co)
+    nt_cambio = NtCambio(capacidad_kva=nt_cambio_raw.get("capacidad_kva"), tipo_medida=(nt_cambio_raw.get("tipo_medida") or "").lower() or None) if nt_cambio_raw else None
+
     ubicacion_asumida_por_or = False
-    if not spec.get("ubicacion_medida"):
+    ubicacion_previa_acta = spec.get("ubicacion_medida")
+    ubicacion_nt = _ubicacion_desde_nt_cambio(nt_cambio_raw)
+    ubicacion_sobrescrita_por_nt = bool(ubicacion_nt and ubicacion_previa_acta and ubicacion_previa_acta != ubicacion_nt)
+    if ubicacion_nt:
+        spec["ubicacion_medida"] = ubicacion_nt
+    elif not spec.get("ubicacion_medida"):
         texto_obs = " ".join(acta_resultado["observaciones"]) if acta_resultado else ""
         ubicacion_inferida = inferir_ubicacion_por_or(origen["or"], texto_obs)
         if ubicacion_inferida:
             spec["ubicacion_medida"] = ubicacion_inferida
             ubicacion_asumida_por_or = True
-
-    nt_cambio_raw = buscar_en_hoja_cambio_nt(sheets, co)
-    norm_indirectas = buscar_en_hoja_normalizaciones_indirectas(sheets, co)
-    nt_cambio = NtCambio(capacidad_kva=nt_cambio_raw.get("capacidad_kva"), tipo_medida=(nt_cambio_raw.get("tipo_medida") or "").lower() or None) if nt_cambio_raw else None
 
     relacion_certificada_tc = relacion_certificada_tp = None
     sin_capacidad_ni_hojas = spec.get("capacidad_instalada_kva") is None and not (nt_cambio_raw and nt_cambio_raw.get("capacidad_kva") is not None)
@@ -99,6 +127,8 @@ def analizar_alcance_provisional(sheets, llm, co_raw: str, dictamen: dict, acta_
         alertas.insert(0, '⚠ No encontré acta de INSTALACIÓN (INST) para este CO — sin ella, Lovable no puede confirmar cumplimiento de medidor/TC/TP (un certificado vigente en Metabase puede ser de una recalibración posterior, no prueba que la instalación original cumplió el código de medida), así que este análisis marca bloque de pruebas/cable/celda para revisión por defecto (medidor/TC/TP se evalúan contra lo que sí haya en Metabase). Si sabes que alguna sí está bien, exclúyela en su fila.')
     if ubicacion_asumida_por_or:
         alertas.insert(0, f'⚠ Ninguna acta indicó interior/exterior — se asumió "{spec["ubicacion_medida"]}" por ser OR {origen["or"]}. Confirma que sea correcto (excepción: centros comerciales suelen ser interior).')
+    if ubicacion_sobrescrita_por_nt:
+        alertas.insert(0, f'⚠ El acta indicaba ubicación "{ubicacion_previa_acta}", pero "Data cambio NT" ya trae el TC/TP calculado como "{spec["ubicacion_medida"]}" para el esquema MT nuevo de este CO reclasificado — se usó el de "Data cambio NT" (más confiable para el punto de medición nuevo que un acta que puede describir el esquema viejo o ser de otra visita). Confirma que sea correcto.')
     if acta_resultado and acta_resultado.get("capacidades_encontradas"):
         vals = " vs. ".join(f'{c["valor"]} kVA ({c["etiqueta"]})' for c in acta_resultado["capacidades_encontradas"])
         alertas.insert(0, f"⚠ Las actas de este CO no coinciden en la capacidad instalada del transformador: {vals} — confirma cuál es la correcta antes de usar el TC/TP propuesto.")
