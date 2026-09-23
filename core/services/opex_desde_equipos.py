@@ -175,13 +175,17 @@ def _resolver_tc_tp(r: _Resolver, tipo_medida_final: str, tipo_medida_actual: st
     return True
 
 
-def _resolver_gabinete(r: _Resolver, tipo_medida_final: str, tipo_medida_actual: str | None, ubicacion: str | None) -> None:
+def _resolver_gabinete(r: _Resolver, tipo_medida_final: str, tipo_medida_actual: str | None, ubicacion: str | None, celda_sku: str | None = None) -> None:
     """En Directa, "Celda" en CAPEX es en realidad un gabinete de medida (metálico o
     policarbonato) — confirmado por Dinovi, 2026-09-22: SÍ existe maniobra propia en
     ref_tarifario ("Instalación gabinete de medida... sobrepuesto interior/exterior"), a
-    diferencia de semidirecta/indirecta donde "Celda" de verdad no tiene ninguna. Se asume
-    montaje "sobrepuesto" (el más común) por defecto — se alerta para que se confirme si en
-    realidad es empotrado o el especial de fachada/poste.
+    diferencia de semidirecta/indirecta donde "Celda" de verdad no tiene ninguna.
+
+    Montaje (Dinovi, 2026-09-23, CO0800001175): si el SKU de celda ya dice "poste" o
+    "fachada" (ej. "Celda para medidor y Bornera de POSTE" — el texto real que trae "Data
+    cambio NT" para este caso), se usa la maniobra puntual "... exterior (fachada/poste)" —
+    la misma línea cubre metálico Y policarbonato, así que no hace falta distinguir material.
+    Si no hay esa pista, se asume "sobrepuesto" (el más común) y se alerta para confirmar.
     """
     if tipo_medida_final != "directa":
         return
@@ -189,10 +193,15 @@ def _resolver_gabinete(r: _Resolver, tipo_medida_final: str, tipo_medida_actual:
         r.alertas.append('No se conoce la ubicación (interior/exterior) — no se puede tarifar el gabinete, agrégalo a mano.')
         return
 
-    inst = tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["instalacion", "gabinete", "sobrepuesto", ubicacion])
-    r.agregar_directo(inst, 1, "equipo", f"instalación de gabinete ({ubicacion})")
-    if inst:
-        r.alertas.append('ℹ️ Se asumió gabinete "sobrepuesto" para tarifar la instalación — si en realidad es empotrado o el especial de fachada/poste, ajusta la maniobra a mano en la hoja OPEX.')
+    es_poste = bool(celda_sku) and ("poste" in celda_sku.lower() or "fachada" in celda_sku.lower())
+    if es_poste:
+        inst = tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["instalacion", "gabinete", "fachada"])
+        r.agregar_directo(inst, 1, "equipo", "instalación de gabinete (fachada/poste)")
+    else:
+        inst = tc.buscar_maniobra_por_palabras(r.maniobras_reales, ["instalacion", "gabinete", "sobrepuesto", ubicacion])
+        r.agregar_directo(inst, 1, "equipo", f"instalación de gabinete ({ubicacion})")
+        if inst:
+            r.alertas.append('ℹ️ Se asumió gabinete "sobrepuesto" para tarifar la instalación — si en realidad es empotrado o el especial de fachada/poste, ajusta la maniobra a mano en la hoja OPEX.')
 
     tipo_retiro = tipo_medida_actual or tipo_medida_final
     if not r.es_instalacion_nueva and tipo_retiro == "directa":
@@ -243,7 +252,7 @@ def construir_opex_desde_equipos(
 
     if secciones.get("celda"):
         if tipo_medida_final == "directa":
-            _resolver_gabinete(r, tipo_medida_final, tipo_medida_actual, ubicacion)
+            _resolver_gabinete(r, tipo_medida_final, tipo_medida_actual, ubicacion, celda_sku)
         else:
             _resolver_gabinete_mt(r, celda_sku)
 
