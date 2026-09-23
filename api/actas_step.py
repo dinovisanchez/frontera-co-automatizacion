@@ -31,7 +31,7 @@ def actas_step():
         return jsonify({"co": co, "completo": True, "spec_combinado": estado.spec_combinado, "actas_usadas": estado.actas_usadas, "observaciones": estado.observaciones})
 
     try:
-        resultado = alcance_combiner.procesar_siguiente_acta(estado, deps.llm, deps.drive_cfg)
+        resultado = alcance_combiner.procesar_siguiente_acta(estado, deps.llm, deps.drive_cfg, deps.sheets)
     except Exception as e:  # noqa: BLE001 — se guarda el error en el job en vez de perder el progreso ya combinado
         deps.jobs.marcar_error(estado, str(e))
         return jsonify({"error": str(e), "spec_combinado": estado.spec_combinado}), 500

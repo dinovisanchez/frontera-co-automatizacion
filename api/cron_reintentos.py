@@ -27,7 +27,7 @@ def cron_reintentos():
         if estado is None:
             continue
         try:
-            resultado = alcance_combiner.procesar_siguiente_acta(estado, deps.llm, deps.drive_cfg)
+            resultado = alcance_combiner.procesar_siguiente_acta(estado, deps.llm, deps.drive_cfg, deps.sheets)
         except Exception as e:  # noqa: BLE001 — un job con error no debe tumbar el resto del tick
             deps.jobs.marcar_error(estado, str(e))
             avanzados.append({"co": co, "error": str(e)})

@@ -12,9 +12,11 @@ de escanear más actas, nunca inventa un valor que ninguna acta trajo.
 from dataclasses import dataclass
 
 from core.data_sources.llm_client import AnthropicClient
+from core.data_sources.sheets_client import SheetsClient
 from core.prompts.acta_extraction_prompt import CAMPOS_A_COMBINAR_ALCANCE, TIPOS_ACTA_ALCANCE
 from core.services import acta_downloader, acta_ocr
 from core.services.acta_analyzer import MetadatosActa, analizar_acta_desde_pdf, analizar_acta_desde_texto
+from core.services.acta_cache import get_acta_cache
 from core.services.job_store import EstadoJob
 from core.utils import normalizar_codigo
 
@@ -98,11 +100,15 @@ def _combinar_en(estado: EstadoJob, fila: dict, etiqueta: str, spec: dict) -> No
 
 
 def procesar_siguiente_acta(
-    estado: EstadoJob, llm: AnthropicClient, drive_cfg
+    estado: EstadoJob, llm: AnthropicClient, drive_cfg, sheets: SheetsClient | None = None
 ) -> ResultadoPaso:
     """Procesa UNA acta de estado.actas_pendientes (la más reciente primero) y actualiza
     estado.spec_combinado in-place. Devuelve completo=True cuando ya no hace falta seguir
     (todos los CAMPOS_A_COMBINAR_ALCANCE + relacion_tc si aplica, o ya no quedan actas).
+
+    `sheets` (opcional, Dinovi 2026-09-23 — reanalizar un CO no debe volver a pagar
+    descarga+OCR+LLM de una acta YA leída antes): si se pasa, consulta/llena acta_cache.py por
+    `act_pdf_url` ANTES de descargar. Se deja opcional para no romper llamadas existentes.
     """
     if not estado.actas_pendientes or not _faltan_campos(estado.spec_combinado):
         return ResultadoPaso(completo=True, estado=estado)
@@ -110,29 +116,36 @@ def procesar_siguiente_acta(
     fila = estado.actas_pendientes.pop(0)
     etiqueta = f"{fila.get('service_type_id', '?')} {fila.get('fecha_visita', '')}"
     url = fila["act_pdf_url"]
+    cache = get_acta_cache(sheets) if sheets is not None else None
 
-    descarga = acta_downloader.descargar_pdf_acta(url)
-    if not descarga.ok:
-        estado.observaciones.append(f"[{etiqueta}] {descarga.motivo_fallo}")
-        return ResultadoPaso(completo=not estado.actas_pendientes, estado=estado)
+    spec_final = cache.obtener(url) if cache else None
+    if spec_final is not None:
+        etiqueta += " (caché)"
+    else:
+        descarga = acta_downloader.descargar_pdf_acta(url)
+        if not descarga.ok:
+            estado.observaciones.append(f"[{etiqueta}] {descarga.motivo_fallo}")
+            return ResultadoPaso(completo=not estado.actas_pendientes, estado=estado)
 
-    meta = MetadatosActa(co=normalizar_codigo(fila.get("bia_code", "")), tipo_acta=fila.get("service_type_id", "?"), fecha_visita=fila.get("fecha_visita", ""))
+        meta = MetadatosActa(co=normalizar_codigo(fila.get("bia_code", "")), tipo_acta=fila.get("service_type_id", "?"), fecha_visita=fila.get("fecha_visita", ""))
 
-    # Intento 1: solo texto (rápido). Intento 2: PDF completo con imágenes, solo si el texto no
-    # trajo todo Y el archivo cabe bajo LIMITE_BYTES_MODO_IMAGEN (Codigo.gs línea 3451/3512).
-    spec_final = None
-    ocr = acta_ocr.ocr_texto_desde_bytes(descarga.bytes_pdf, drive_cfg)
-    if ocr.ok:
-        resultado_texto = analizar_acta_desde_texto(meta, ocr.texto, llm)
-        if resultado_texto.spec and not _faltan_campos({**estado.spec_combinado, **{k: v for k, v in resultado_texto.spec.items() if v is not None}}):
-            spec_final = resultado_texto.spec
-        elif resultado_texto.spec:
-            spec_final = resultado_texto.spec  # parcial — se combina igual, puede completar entre varias actas
+        # Intento 1: solo texto (rápido). Intento 2: PDF completo con imágenes, solo si el texto
+        # no trajo todo Y el archivo cabe bajo LIMITE_BYTES_MODO_IMAGEN (Codigo.gs línea 3451/3512).
+        ocr = acta_ocr.ocr_texto_desde_bytes(descarga.bytes_pdf, drive_cfg)
+        if ocr.ok:
+            resultado_texto = analizar_acta_desde_texto(meta, ocr.texto, llm)
+            if resultado_texto.spec and not _faltan_campos({**estado.spec_combinado, **{k: v for k, v in resultado_texto.spec.items() if v is not None}}):
+                spec_final = resultado_texto.spec
+            elif resultado_texto.spec:
+                spec_final = resultado_texto.spec  # parcial — se combina igual, puede completar entre varias actas
 
-    if spec_final is None and len(descarga.bytes_pdf) < acta_downloader.LIMITE_BYTES_MODO_IMAGEN:
-        resultado_imagen = analizar_acta_desde_pdf(meta, descarga.bytes_pdf, llm)
-        if resultado_imagen.spec:
-            spec_final = resultado_imagen.spec
+        if spec_final is None and len(descarga.bytes_pdf) < acta_downloader.LIMITE_BYTES_MODO_IMAGEN:
+            resultado_imagen = analizar_acta_desde_pdf(meta, descarga.bytes_pdf, llm)
+            if resultado_imagen.spec:
+                spec_final = resultado_imagen.spec
+
+        if spec_final and cache:
+            cache.guardar(url, spec_final)
 
     if spec_final:
         _combinar_en(estado, fila, etiqueta, spec_final)
