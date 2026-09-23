@@ -639,7 +639,10 @@
         var destinoGuardar = document.getElementById(id + '_resultGuardar');
         destinoGuardar.innerHTML = '';
         var ETIQUETA_CLASIFICACION = { normalizacion: 'Normalización', recuperable: 'Recuperable', cumple: 'Cumple' };
-        var maniobraRespaldo = ETIQUETA_CLASIFICACION[res._clasificacion] || null;
+        // Cambio de Nivel de Tensión (Art.19, res.diagnostico.reclasificado) es un caso de
+        // Normalización, pero Dinovi pidió (2026-09-23) distinguirlo en la columna "Maniobra"
+        // de "Equipos" para poder identificarlo aparte de una normalización común.
+        var maniobraRespaldo = (res.diagnostico && res.diagnostico.reclasificado) ? 'Cambio NT' : (ETIQUETA_CLASIFICACION[res._clasificacion] || null);
         fetchJSON('POST', '/api/guardar_alcance', { co: res.co, filas: filas, maniobra_respaldo: maniobraRespaldo }).then(function (r) {
           setRunning(id + '_btnConfirmar', id + '_spinnerGuardar', false);
           destinoGuardar.innerHTML = '<div class="line ok">✓ Guardado (' + r.guardadas.length + ' fila(s)) — <a href="' + r.hoja_url + '" target="_blank">ver hoja Equipos</a></div>';
