@@ -77,12 +77,17 @@ class AnthropicClient:
         """Arma el body con los parámetros EXACTOS de bodyClaudeActa/bodyClaudeActaTexto
         (Codigo.gs líneas 3395-3422): model/max_tokens/output_config del acta original, sin
         cambiar ninguno por defecto.
+
+        `system_prompt` (ACTA_EXTRACTION_PROMPT_V2, ~2500 tokens) es idéntico en cada llamada
+        de un mismo job — hasta 5 actas por CO, cada una con su propio intento texto+PDF — así
+        que va con `cache_control: ephemeral` para que Anthropic lo facture como cache-hit
+        (~90% más barato) en vez de reprocesarlo entero cada vez.
         """
         return {
             "model": self._cfg.model,
             "max_tokens": self._cfg.max_tokens,
             "output_config": {"effort": self._cfg.effort},
-            "system": system_prompt,
+            "system": [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
             "messages": [{"role": "user", "content": contenido_mensaje}],
         }
 
@@ -93,12 +98,16 @@ class AnthropicClient:
         relación certificada de un TC/TP) — mismo patrón que
         extraerRatioDeCertificadoCalibracion (Codigo.gs línea 3174-3205): max_tokens/effort
         bajos, no los de la extracción completa de 14 campos.
+
+        `cache_control` acá también: estos prompts son cortos y normalmente quedan bajo el
+        mínimo cacheable, así que Anthropic simplemente lo ignora sin costo — no hace daño
+        dejarlo por si el prompt crece.
         """
         return {
             "model": self._cfg.model,
             "max_tokens": max_tokens,
             "output_config": {"effort": effort},
-            "system": system_prompt,
+            "system": [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
             "messages": [{"role": "user", "content": contenido_mensaje}],
         }
 
