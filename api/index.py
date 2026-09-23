@@ -18,8 +18,10 @@ from api.cron_reintentos import bp as cron_reintentos_bp
 from api.guardar_alcance import bp as guardar_alcance_bp
 from api.guardar_opex import bp as guardar_opex_bp
 from api.opex_resolver import bp as opex_resolver_bp
+from api._debug_actas import bp as _debug_actas_bp
 
 app = Flask(__name__)
+app.register_blueprint(_debug_actas_bp)
 app.register_blueprint(actas_start_bp)
 app.register_blueprint(actas_step_bp)
 app.register_blueprint(actas_status_bp)
