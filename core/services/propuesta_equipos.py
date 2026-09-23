@@ -75,6 +75,15 @@ def construir_propuesta_equipos(
         alertas.append(f'ℹ️ "Normalizaciones_Indirectas" indica bornera: "{norm_indirectas["bornera"]}"{cantidad} — no hay un SKU de "bornera" independiente en ref_capex; revisa si va incluido en la celda o hay que agregarlo al catálogo.')
 
     _anotar_recalibracion_y_burden(propuesta, equipos_actuales)
+
+    # `ctx["ubicacion"]` puede haberse resuelto en caliente (ver _propagar_ubicacion_desde_tc)
+    # aunque el acta nunca la haya declarado — si no se escribe de vuelta en `spec`, el
+    # frontend arma el OPEX con ubicacion=null (CO0800001175, Dinovi 2026-09-23: CAPEX sí sabía
+    # "exterior" por el SKU del TC/TP, pero /api/opex_resolver no tarifó el montaje de TCs/TPs
+    # en MT porque spec.ubicacion_medida seguía en null).
+    if ctx["ubicacion"] and not spec.get("ubicacion_medida"):
+        spec["ubicacion_medida"] = ctx["ubicacion"]
+
     return {"propuesta": propuesta, "alertas": alertas}
 
 
