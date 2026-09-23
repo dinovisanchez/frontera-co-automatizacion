@@ -76,4 +76,5 @@ def opex_resolver():
         "derivadoDeEquipos": resultado.derivado_de_equipos,
         "nota": resultado.nota,
         "alertas": resultado.alertas,
+        "maniobrasDisponibles": resultado.maniobras_disponibles,
     })

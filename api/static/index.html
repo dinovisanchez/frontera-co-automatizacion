@@ -769,12 +769,26 @@
       html += '<div class="line" id="' + idTabla + '_total" style="text-align:right;font-weight:700;margin-top:6px;">Total general: ' + formatoPesos(opex.totalGeneral != null ? opex.totalGeneral : totalInicial) + '</div>';
 
       var idManiobraManual = idTabla + '_maniobraManual', idCantidadManual = idTabla + '_cantidadManual', idBtnAgregarManual = idTabla + '_btnAgregarManual';
-      html += '<div class="toolbar" style="margin-top:10px;">';
-      html += '<input id="' + idManiobraManual + '" placeholder="Nombre exacto de la maniobra…" style="flex:2;min-width:200px;margin:0;" />';
+      var idSelManiobraManual = idTabla + '_selManiobraManual';
+      var maniobrasDisponibles = opex.maniobrasDisponibles || [];
+      html += '<div class="toolbar" style="margin-top:10px;flex-wrap:wrap;">';
+      if (maniobrasDisponibles.length) {
+        html += '<select id="' + idSelManiobraManual + '" style="flex:2;min-width:200px;margin:0;">';
+        html += '<option value="">— elegir maniobra de ref_tarifario —</option>';
+        maniobrasDisponibles.forEach(function (m) {
+          html += '<option value="' + escapeHtml(m) + '">' + escapeHtml(m) + '</option>';
+        });
+        html += '</select>';
+      }
+      html += '<input id="' + idManiobraManual + '" placeholder="' + (maniobrasDisponibles.length ? 'o escribe el nombre exacto…' : 'Nombre exacto de la maniobra…') + '" style="flex:2;min-width:200px;margin:0;" />';
       html += '<input id="' + idCantidadManual + '" type="number" min="1" value="1" style="width:70px;margin:0;" />';
       html += '<button class="secondary-btn" id="' + idBtnAgregarManual + '" style="margin:0;">+ Agregar fila manual</button>';
       html += '</div>';
-      html += '<div class="req-note" style="margin-top:4px;padding:0;border:none;">Escribe el nombre EXACTO de la maniobra tal como está en "ref_tarifario" — la hoja calcula el costo sola por ese nombre; aquí no se muestra costo para las agregadas a mano.</div>';
+      html += '<div class="req-note" style="margin-top:4px;padding:0;border:none;">' +
+        (maniobrasDisponibles.length
+          ? 'Elige del desplegable para que el nombre quede EXACTO (así la hoja sí encuentra el precio al guardar) o escribe uno si no está en la lista — aquí no se muestra costo para las agregadas a mano.'
+          : 'Escribe el nombre EXACTO de la maniobra tal como está en "ref_tarifario" — la hoja calcula el costo sola por ese nombre; aquí no se muestra costo para las agregadas a mano.') +
+        '</div>';
 
       var idBtnGuardar = 'opexGuardar_' + Math.random().toString(36).slice(2);
       var idSpinnerGuardar = 'opexSpinnerGuardar_' + Math.random().toString(36).slice(2);
@@ -808,6 +822,11 @@
           opex.filas.splice(i, 1);
           pintarTablaOpex(opex, destinoEl);
         });
+      });
+
+      var selManiobraManual = document.getElementById(idSelManiobraManual);
+      if (selManiobraManual) selManiobraManual.addEventListener('change', function () {
+        if (this.value) document.getElementById(idManiobraManual).value = this.value;
       });
 
       var btnAgregarManual = document.getElementById(idBtnAgregarManual);

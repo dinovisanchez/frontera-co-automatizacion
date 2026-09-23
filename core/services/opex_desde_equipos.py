@@ -36,6 +36,10 @@ class ResultadoOpexDesdeEquipos:
     filas: list[dict] = field(default_factory=list)
     total_general: float = 0.0
     derivado_de_equipos: bool = True
+    # Los 72 nombres reales de ref_tarifario (Dinovi, 2026-09-23) — el frontend los usa para
+    # armar el desplegable de "agregar fila manual" en vez de exigir que el usuario teclee el
+    # nombre EXACTO a mano (única forma de que la fila agregada traiga costo real).
+    maniobras_disponibles: list[str] = field(default_factory=list)
     nota: str = (
         'Este CO no está en "Consolidado" — estas maniobras se derivaron del tipo de medida '
         "final y la ubicación que ya calculó CAPEX. Celda y cable no tienen maniobra propia en "
@@ -243,4 +247,5 @@ def construir_opex_desde_equipos(
     return ResultadoOpexDesdeEquipos(
         co=co, operador=operador, or_original=or_raw, opcion_cumplimiento=opcion,
         filas=filas_salida, total_general=total_general, alertas=alertas,
+        maniobras_disponibles=sorted(tarifario["maniobras"]),
     )
