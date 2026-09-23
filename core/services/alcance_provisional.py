@@ -107,7 +107,10 @@ def analizar_alcance_provisional(sheets, llm, co_raw: str, dictamen: dict, acta_
         if tp_actual and tp_actual.get("certificado_calibracion_url"):
             relacion_certificada_tp = extraer_ratio_de_certificado_calibracion(tp_actual["certificado_calibracion_url"], llm)
 
-    diagnostico = clasificar_tipo_medida(spec, nt_cambio, bool(norm_indirectas), origen["or"])
+    trafo_compartido_confirmado = bool(dictamen.get("trafoCompartidoConfirmado"))
+    diagnostico = clasificar_tipo_medida(spec, nt_cambio, bool(norm_indirectas), origen["or"], trafo_compartido_confirmado)
+    if trafo_compartido_confirmado:
+        spec["trafo_uso"] = "compartido"
     diagnostico_dict = {
         "tipo_medida_actual": diagnostico.tipo_medida_actual, "tipo_medida_final": diagnostico.tipo_medida_final,
         "uso_transformador": diagnostico.uso_transformador, "nivel_tension": diagnostico.nivel_tension,
@@ -149,6 +152,8 @@ def analizar_alcance_provisional(sheets, llm, co_raw: str, dictamen: dict, acta_
         # Art.19 no aplica a un transformador compartido. No hay forma de saber cuál es
         # correcto sin leer la acta real, así que se avisa en vez de decidir en silencio.
         alertas.insert(0, '🔴 ATENCIÓN: esta reclasificación a Indirecta (Art.19) asume transformador de uso EXCLUSIVO tomado de la hoja MAESTRA — ninguna acta lo confirmó. Si el acta o Lovable dicen que el transformador es COMPARTIDO, esta reclasificación NO aplica (Art.19 es solo para exclusivo) y el alcance real es Normalización del esquema actual, no cambio de Nivel de Tensión. Verifica el acta antes de guardar.')
+    if trafo_compartido_confirmado:
+        alertas.insert(0, '✓ Marcaste el transformador como COMPARTIDO — no se aplicó la reclasificación a Indirecta por Art.19 aunque "Data cambio NT"/"Normalizaciones_Indirectas"/hoja maestra sugirieran lo contrario. El alcance se armó con el tipo de medida real del acta/Lovable.')
     if acta_resultado and acta_resultado.get("capacidades_encontradas"):
         vals = " vs. ".join(f'{c["valor"]} kVA ({c["etiqueta"]})' for c in acta_resultado["capacidades_encontradas"])
         alertas.insert(0, f"⚠ Las actas de este CO no coinciden en la capacidad instalada del transformador: {vals} — confirma cuál es la correcta antes de usar el TC/TP propuesto.")

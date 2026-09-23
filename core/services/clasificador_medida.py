@@ -71,9 +71,19 @@ def _rank_nivel_medida(tipo: str | None) -> int:
 
 
 def clasificar_tipo_medida(
-    spec: dict, nt_cambio: NtCambio | None, norm_indirectas: bool, or_real: str | None
+    spec: dict, nt_cambio: NtCambio | None, norm_indirectas: bool, or_real: str | None,
+    trafo_compartido_confirmado: bool = False,
 ) -> ClasificacionMedida:
+    """`trafo_compartido_confirmado`: el usuario confirmó a mano (checkbox del dictamen) que el
+    transformador es COMPARTIDO — anula tanto el "exclusivo" que asumen "Data cambio NT"/
+    "Normalizaciones_Indirectas" sin condición (Regla 9d-previa) como cualquier trafo_uso de la
+    hoja maestra, para los casos en que el acta real (a veces ilegible/demasiado grande para
+    OCR, ver CO0800000348, Dinovi 2026-09-23) o Lovable ya dejaron claro que es compartido y
+    Art.19 no aplica. NO anula la Regla 9a (conexión YA en MT): eso es un hecho físico del
+    punto de medición actual, no depende de si el transformador es compartido o no.
+    """
     nivel_tension = spec.get("nivel_tension")
+    trafo_uso = "compartido" if trafo_compartido_confirmado else spec.get("trafo_uso")
     if nt_cambio and nt_cambio.capacidad_kva is not None:
         kva_final = nt_cambio.capacidad_kva
     else:
@@ -82,7 +92,7 @@ def clasificar_tipo_medida(
 
     out = ClasificacionMedida(
         tipo_medida_actual=tipo_actual,
-        uso_transformador=spec.get("trafo_uso"),
+        uso_transformador=trafo_uso,
         nivel_tension=nivel_tension,
         kva=kva_final,
         elementos=spec.get("elementos_medida") if isinstance(spec.get("elementos_medida"), int) else None,
@@ -90,8 +100,9 @@ def clasificar_tipo_medida(
     )
 
     # Regla 9d-previa (Codigo.gs 3661-3678): la sola presencia en "Data cambio NT" o
-    # "Normalizaciones_Indirectas" YA es el dictamen — indirecta + exclusivo, sin condición.
-    if nt_cambio or norm_indirectas:
+    # "Normalizaciones_Indirectas" YA es el dictamen — indirecta + exclusivo, sin condición...
+    # salvo que el usuario ya haya confirmado a mano que es compartido (ver docstring).
+    if (nt_cambio or norm_indirectas) and not trafo_compartido_confirmado:
         out.tipo_medida_final = "indirecta"
         out.uso_transformador = "exclusivo"
         out.nivel_tension = _nivel_tension_para_indirecta(out.nivel_tension, or_real)
@@ -103,6 +114,15 @@ def clasificar_tipo_medida(
             "(Art.19), transformador de uso exclusivo, sin importar lo que diga el acta o la hoja maestra."
         )
         return out
+    if (nt_cambio or norm_indirectas) and trafo_compartido_confirmado:
+        fuente = "Data cambio NT" if nt_cambio else "Normalizaciones_Indirectas"
+        out.motivo = (
+            f'El CO está en "{fuente}", que normalmente forzaría Indirecta + exclusivo — pero se '
+            "confirmó a mano que el transformador es COMPARTIDO, así que Art.19 no aplica; se "
+            f"evalúa como cualquier otro CO compartido a partir de aquí. Revisa por qué esa hoja "
+            "trae este CO si de verdad es compartido (puede ser un error de esa hoja)."
+        )
+        # sigue evaluando las reglas normales de abajo con trafo_uso="compartido"
 
     # Regla 9a: conexión ya en MT (13.2/34.5/11.4kV) => indirecta + exclusivo por definición.
     es_mt = nivel_tension in _NIVELES_MT_RECONOCIDOS
@@ -115,7 +135,7 @@ def clasificar_tipo_medida(
         return out
 
     # Regla 9b/9c: transformador EXCLUSIVO en BT — solo sube a indirecta por encima del piso.
-    if spec.get("trafo_uso") == "exclusivo":
+    if trafo_uso == "exclusivo":
         kva_exclusivo = kva_final
         if kva_exclusivo is not None and kva_exclusivo > UMBRAL_RECLASIFICACION_EXCLUSIVO_KVA:
             out.tipo_medida_final = "indirecta"
@@ -142,7 +162,7 @@ def clasificar_tipo_medida(
         return out
 
     # Transformador COMPARTIDO: la capacidad es del transformador completo, no de este cliente.
-    es_compartido = spec.get("trafo_uso") == "compartido"
+    es_compartido = trafo_uso == "compartido"
 
     if out.kva is not None and out.kva > UMBRAL_INDIRECTA_KVA:
         if es_compartido:

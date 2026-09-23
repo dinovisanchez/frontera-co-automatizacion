@@ -11,9 +11,12 @@ from dataclasses import dataclass
 
 import requests
 
-# Mismo límite que Codigo.gs (LIMITE_BYTES_DESCARGA, línea 3249): por encima de esto ni
-# siquiera vale la pena intentar OCR — se descarta la acta.
-LIMITE_BYTES_DESCARGA = 20 * 1024 * 1024
+# Codigo.gs (LIMITE_BYTES_DESCARGA, línea 3249) usaba 20MB, limitado por Apps Script — en
+# Vercel (maxDuration 60s, sin el límite de tiempo de ejecución de Apps Script) hay margen
+# real para más. Subido a 50MB (Dinovi, 2026-09-23, CO0800000348: una acta INFR real de 42MB
+# se estaba descartando sin necesidad — 344MB en cambio SÍ sigue siendo inviable, ver
+# CO0100000215, no hay evidencia de que valga la pena subir esto mucho más).
+LIMITE_BYTES_DESCARGA = 50 * 1024 * 1024
 
 # Umbral para decidir si vale la pena el modo "con imágenes" (PDF completo en base64) como
 # fallback cuando el modo texto no trajo todo — Codigo.gs línea 3250.
