@@ -794,8 +794,11 @@
         opex.filas.forEach(function (f, i) {
           var idExcluirOpex = idTabla + '_excluir' + i, idQuitarOpex = idTabla + '_quitar' + i;
           html += '<tr id="' + idTabla + '_fila' + i + '" style="border-bottom:1px solid var(--border-soft);">' +
-            '<td style="padding:5px 6px;white-space:nowrap;"><input type="checkbox" id="' + idExcluirOpex + '" title="excluir" />' +
-            ' <button type="button" id="' + idQuitarOpex + '" title="quitar esta fila" style="margin:0;padding:1px 6px;font-size:11px;background:none;border:1px solid var(--border-soft);color:var(--text-faint);border-radius:5px;cursor:pointer;">✕</button></td>' +
+            '<td style="padding:5px 6px;white-space:nowrap;">' +
+            '<div style="display:flex;align-items:center;gap:6px;">' +
+            '<input type="checkbox" id="' + idExcluirOpex + '" title="excluir" style="margin:0;flex-shrink:0;" />' +
+            '<button type="button" id="' + idQuitarOpex + '" title="quitar esta fila" style="margin:0;flex-shrink:0;width:22px;height:22px;padding:0;line-height:1;font-size:13px;font-weight:700;background:var(--red-soft);border:1px solid var(--red);color:var(--red);border-radius:5px;cursor:pointer;">✕</button>' +
+            '</div></td>' +
             '<td style="padding:5px 6px;">' + escapeHtml(f.maniobra) + '</td>' +
             '<td style="padding:5px 6px;color:var(--text-faint);">' + escapeHtml(ORIGEN_LABEL_OPEX[f.origen] || f.origen) + '</td>' +
             '<td style="padding:5px 6px;text-align:right;">' + f.cantidad + '</td>' +
