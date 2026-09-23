@@ -792,13 +792,11 @@
           '<th style="padding:5px 6px;text-align:right;">Total c/extras</th></tr></thead><tbody>';
 
         opex.filas.forEach(function (f, i) {
-          var idExcluirOpex = idTabla + '_excluir' + i, idQuitarOpex = idTabla + '_quitar' + i;
+          var idExcluirOpex = idTabla + '_excluir' + i;
           html += '<tr id="' + idTabla + '_fila' + i + '" style="border-bottom:1px solid var(--border-soft);">' +
             '<td style="padding:5px 6px;white-space:nowrap;">' +
-            '<div style="display:flex;align-items:center;gap:6px;">' +
-            '<input type="checkbox" id="' + idExcluirOpex + '" title="excluir" style="margin:0;flex-shrink:0;" />' +
-            '<button type="button" id="' + idQuitarOpex + '" title="quitar esta fila" style="margin:0;flex-shrink:0;width:22px;height:22px;padding:0;line-height:1;font-size:13px;font-weight:700;background:var(--red-soft);border:1px solid var(--red);color:var(--red);border-radius:5px;cursor:pointer;">✕</button>' +
-            '</div></td>' +
+            '<input type="checkbox" id="' + idExcluirOpex + '" title="excluir" style="margin:0;" />' +
+            '</td>' +
             '<td style="padding:5px 6px;">' + escapeHtml(f.maniobra) + '</td>' +
             '<td style="padding:5px 6px;color:var(--text-faint);">' + escapeHtml(ORIGEN_LABEL_OPEX[f.origen] || f.origen) + '</td>' +
             '<td style="padding:5px 6px;text-align:right;">' + f.cantidad + '</td>' +
@@ -811,7 +809,7 @@
             '</tr>';
         });
         html += '</tbody></table></div>';
-        html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">Marca la casilla para excluir esa maniobra (no se copia ni se guarda), o dale ✕ para quitarla de la lista.</div>';
+        html += '<div class="req-note" style="margin-top:6px;padding:0;border:none;">Marca la casilla para excluir esa maniobra (no se copia ni se guarda).</div>';
       } else {
         html += '<div class="item">No se identificaron maniobras para este CO — agrega una a mano abajo si hace falta.</div>';
       }
@@ -867,11 +865,6 @@
       opex.filas.forEach(function (f, i) {
         var chk = document.getElementById(idTabla + '_excluir' + i);
         if (chk) chk.addEventListener('change', actualizarTotal);
-        var btnQuitar = document.getElementById(idTabla + '_quitar' + i);
-        if (btnQuitar) btnQuitar.addEventListener('click', function () {
-          opex.filas.splice(i, 1);
-          pintarTablaOpex(opex, destinoEl);
-        });
       });
 
       var selManiobraManual = document.getElementById(idSelManiobraManual);
