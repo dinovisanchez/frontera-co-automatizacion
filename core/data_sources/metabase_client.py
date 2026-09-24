@@ -39,10 +39,19 @@ class _CacheEntry:
     expira_en: float
 
 
+# Caché a nivel de MÓDULO, no de instancia (Dinovi, 2026-09-24: "Comparación Masiva" de ~400 CO
+# hace cientos de invocaciones de Vercel — una por acta/paso — y cada una crea un MetabaseClient
+# nuevo vía construir_dependencias(); con el caché en self, esa instancia nueva siempre partía
+# con self._cache=None y volvía a descargar el CSV completo (34 mil filas) en CADA paso. Vercel
+# reutiliza el mismo contenedor/proceso para invocaciones seguidas (mismo patrón que una Lambda
+# tibia) — un caché a nivel de módulo sí sobrevive entre esas invocaciones y corta la mayoría de
+# esas descargas repetidas, sin tocar el resto del flujo ni el TTL de 5 min ya existente.
+_cache_global: _CacheEntry | None = None
+
+
 class MetabaseClient:
     def __init__(self, cfg: MetabaseConfig):
         self._cfg = cfg
-        self._cache: _CacheEntry | None = None
 
     def _descargar_csv_con_reintentos(self) -> str:
         url = f"{self._cfg.url}/api/card/{self._cfg.card_id}/query/csv"
@@ -71,9 +80,10 @@ class MetabaseClient:
         raise ultimo_error or RuntimeError("Metabase: fallo desconocido tras reintentos.")
 
     def _csv_cacheado(self) -> list[dict]:
+        global _cache_global
         ahora = time.monotonic()
-        if self._cache and self._cache.expira_en > ahora:
-            return self._cache.filas
+        if _cache_global and _cache_global.expira_en > ahora:
+            return _cache_global.filas
 
         texto = self._descargar_csv_con_reintentos()
         lector = csv.DictReader(io.StringIO(texto))
@@ -82,7 +92,7 @@ class MetabaseClient:
                 f'La columna "bia_code" no está en el CSV de Metabase (columnas: {lector.fieldnames}).'
             )
         filas = list(lector)
-        self._cache = _CacheEntry(filas=filas, expira_en=ahora + CSV_CACHE_TTL_SEG)
+        _cache_global = _CacheEntry(filas=filas, expira_en=ahora + CSV_CACHE_TTL_SEG)
         return filas
 
     def filas_por_co(self, co: str) -> list[dict]:
