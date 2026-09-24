@@ -46,6 +46,15 @@
     }
     .brand-name { font-size: 13px; color: var(--text-sub); font-weight: 500; letter-spacing: .01em; }
 
+    .tabs { display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid var(--border-soft); }
+    .tab-btn {
+      margin: 0; padding: 9px 16px; font-size: 13.5px; font-weight: 600;
+      background: none; border: none; border-bottom: 2px solid transparent;
+      color: var(--text-faint); cursor: pointer; border-radius: 0;
+    }
+    .tab-btn:hover:not(:disabled) { color: var(--text-sub); filter: none; }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
     h1 { font-size: 24px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01em; }
     .subtitle { color: var(--text-sub); font-size: 13.5px; line-height: 1.55; margin: 0 0 24px; max-width: 62ch; }
 
@@ -125,43 +134,52 @@
     <span class="brand-name">BIA · Fronteras Comerciales</span>
   </div>
 
-  <h1>Frontera CO — Alcance Quinquenal</h1>
-  <p class="subtitle">Escribe uno o varios códigos CO (separados por coma, espacio o salto de línea). Por cada uno se leen sus actas, se aplica la norma (CREG 038/2014 + NTC 5019) y se propone el SKU de TC/TP/Medidor/Celda/Bloque de pruebas que falte. Nada se guarda solo — copias las filas y las pegas tú en las hojas correspondientes.</p>
-
-  <div class="card">
-    <div class="card-title">Alcance Provisional Quinquenales</div>
-    <label for="cosAlcance">Códigos CO</label>
-    <textarea id="cosAlcance" rows="3" placeholder="CO0800004954, CO0400005205..."></textarea>
-
-    <div class="toolbar">
-      <button id="btnAnalizarAlcance">Analizar</button>
-      <button id="btnAnalizarTodos" class="secondary-btn">Analizar todos</button>
-      <button id="btnReintentarFallidos" class="secondary-btn" style="display:none;">Reintentar fallidos</button>
-      <button id="btnColapsarTodas" class="secondary-btn">− Minimizar todas</button>
-      <button id="btnExpandirTodas" class="secondary-btn">+ Expandir todas</button>
-    </div>
-    <div id="resumenAnalisisTodos" style="margin-top:8px;font-size:13px;color:var(--text-sub);"></div>
-    <p class="req-note">"Analizar" arma una tarjeta por cada CO para que elijas la clasificación (según lo que veas en tu herramienta de diagnóstico). "Analizar todos" corre el análisis de todas las tarjetas ya armadas, una por una.</p>
+  <div class="tabs">
+    <button type="button" class="tab-btn active" id="tabBtnAlcance">Alcance Quinquenal</button>
+    <button type="button" class="tab-btn" id="tabBtnLote">Comparación Masiva</button>
   </div>
 
-  <div id="resultadosAlcance"></div>
+  <div id="panelAlcance">
+    <h1>Frontera CO — Alcance Quinquenal</h1>
+    <p class="subtitle">Escribe uno o varios códigos CO (separados por coma, espacio o salto de línea). Por cada uno se leen sus actas, se aplica la norma (CREG 038/2014 + NTC 5019) y se propone el SKU de TC/TP/Medidor/Celda/Bloque de pruebas que falte. Nada se guarda solo — copias las filas y las pegas tú en las hojas correspondientes.</p>
 
-  <h1 style="margin-top:40px;">Comparación Masiva Quinquenales</h1>
-  <p class="subtitle">Pega muchos códigos CO de una vez. Se revisa cuáles están en "Data cambio NT" o "Normalizaciones_Indirectas" (libro Quinquenales | Indirectas - Art.19) — el que no esté en ninguna de las dos se descarta sin gastar nada. A los que sí califican se les corre el mismo análisis (Metabase + actas, igual que el flujo CO por CO) y se compara contra lo que esa hoja ya tiene anotado.</p>
+    <div class="card">
+      <div class="card-title">Alcance Provisional Quinquenales</div>
+      <label for="cosAlcance">Códigos CO</label>
+      <textarea id="cosAlcance" rows="3" placeholder="CO0800004954, CO0400005205..."></textarea>
 
-  <div class="card">
-    <div class="card-title">Comparación Masiva Quinquenales</div>
-    <label for="cosLote">Códigos CO (muchos a la vez)</label>
-    <textarea id="cosLote" rows="6" placeholder="CO0800004954, CO0400005205..."></textarea>
-    <div class="toolbar">
-      <button id="btnIniciarLote">Iniciar comparación</button>
+      <div class="toolbar">
+        <button id="btnAnalizarAlcance">Analizar</button>
+        <button id="btnAnalizarTodos" class="secondary-btn">Analizar todos</button>
+        <button id="btnReintentarFallidos" class="secondary-btn" style="display:none;">Reintentar fallidos</button>
+        <button id="btnColapsarTodas" class="secondary-btn">− Minimizar todas</button>
+        <button id="btnExpandirTodas" class="secondary-btn">+ Expandir todas</button>
+      </div>
+      <div id="resumenAnalisisTodos" style="margin-top:8px;font-size:13px;color:var(--text-sub);"></div>
+      <p class="req-note">"Analizar" arma una tarjeta por cada CO para que elijas la clasificación (según lo que veas en tu herramienta de diagnóstico). "Analizar todos" corre el análisis de todas las tarjetas ya armadas, una por una.</p>
     </div>
-    <div class="spinner" id="spinnerLote">Iniciando…</div>
-    <div id="resumenLote" style="margin-top:8px;font-size:13px;color:var(--text-sub);"></div>
-    <p class="req-note">Los CO que no estén en ninguna de las 2 hojas se saltan en silencio. El resto se procesa uno por uno (puede tardar — cada CO necesita leer sus actas); puedes cerrar y volver, el progreso queda guardado.</p>
+
+    <div id="resultadosAlcance"></div>
   </div>
 
-  <div id="resultadosLote"></div>
+  <div id="panelLote" style="display:none;">
+    <h1>Comparación Masiva Quinquenales</h1>
+    <p class="subtitle">Pega muchos códigos CO de una vez. Se revisa cuáles están en "Data cambio NT" o "Normalizaciones_Indirectas" (libro Quinquenales | Indirectas - Art.19) — el que no esté en ninguna de las dos se descarta sin gastar nada. A los que sí califican se les corre el mismo análisis (Metabase + actas, igual que el flujo CO por CO) y se compara contra lo que esa hoja ya tiene anotado.</p>
+
+    <div class="card">
+      <div class="card-title">Comparación Masiva Quinquenales</div>
+      <label for="cosLote">Códigos CO (muchos a la vez)</label>
+      <textarea id="cosLote" rows="6" placeholder="CO0800004954, CO0400005205..."></textarea>
+      <div class="toolbar">
+        <button id="btnIniciarLote">Iniciar comparación</button>
+      </div>
+      <div class="spinner" id="spinnerLote">Iniciando…</div>
+      <div id="resumenLote" style="margin-top:8px;font-size:13px;color:var(--text-sub);"></div>
+      <p class="req-note">Los CO que no estén en ninguna de las 2 hojas se saltan en silencio. El resto se procesa uno por uno (puede tardar — cada CO necesita leer sus actas); puedes cerrar y volver, el progreso queda guardado.</p>
+    </div>
+
+    <div id="resultadosLote"></div>
+  </div>
 
   <script>
     // ---------- Utilidades básicas ----------
@@ -1107,6 +1125,17 @@
         document.getElementById('resultadosLote').innerHTML = renderError(err);
       });
     });
+
+    // ---------- Pestañas: Alcance Quinquenal / Comparación Masiva ----------
+    function activarTab(nombre) {
+      var esAlcance = nombre === 'alcance';
+      document.getElementById('panelAlcance').style.display = esAlcance ? '' : 'none';
+      document.getElementById('panelLote').style.display = esAlcance ? 'none' : '';
+      document.getElementById('tabBtnAlcance').classList.toggle('active', esAlcance);
+      document.getElementById('tabBtnLote').classList.toggle('active', !esAlcance);
+    }
+    document.getElementById('tabBtnAlcance').addEventListener('click', function () { activarTab('alcance'); });
+    document.getElementById('tabBtnLote').addEventListener('click', function () { activarTab('lote'); });
   </script>
 </body>
 </html>
