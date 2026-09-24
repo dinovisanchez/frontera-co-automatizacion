@@ -9,8 +9,9 @@ alcance_combiner.procesar_siguiente_acta) en vez de reinventar el seguimiento de
 solo cambia dónde se persiste (una fila por CO en "PyLoteAlcance" en vez de una fila por CO en
 "PyAsyncJobs", porque acá conviven muchos CO bajo un mismo lote_id).
 
-Solo modo texto (permitir_modo_imagen=False): Dinovi pidió explícitamente no procesar
-fotografías del PDF para este lote, solo la extracción puntual del texto OCR.
+Modo de lectura de actas automático (permitir_modo_imagen=True, Dinovi 2026-09-24): igual que
+el flujo CO-por-CO — intenta texto (OCR) primero, y solo cae al PDF completo (con imágenes)
+si el texto no bastó y el archivo cabe bajo el límite de tamaño; no se fuerza a texto-only.
 """
 
 import json
@@ -151,7 +152,7 @@ class LoteStore:
                 f.job.tiene_acta_instalacion = alcance_combiner.hay_acta_instalacion(filas_metabase_co)
                 f.estado = ESTADO_LEYENDO_ACTAS
 
-            resultado_paso = alcance_combiner.procesar_siguiente_acta(f.job, llm, drive_cfg, self._sheets, permitir_modo_imagen=False)
+            resultado_paso = alcance_combiner.procesar_siguiente_acta(f.job, llm, drive_cfg, self._sheets, permitir_modo_imagen=True)
             f.job = resultado_paso.estado
 
             if resultado_paso.completo:
