@@ -131,7 +131,18 @@ class LoteStore:
             filas_nuevas.append(self._fila_valores(f))
 
         if filas_nuevas:
-            self._hoja().append_rows(filas_nuevas)
+            # append_rows (sin rango explícito) le pide a Sheets que "busque una tabla" para
+            # decidir en qué columna insertar — con muchos lotes creados en el tiempo, cada
+            # búsqueda encontraba la tabla anterior y la siguiente corrida quedaba pegada a su
+            # derecha, no debajo en columna A (bug real, Dinovi 2026-09-24: filas de lotes
+            # previos aparecían desplazadas ~16 columnas por cada lote nuevo creado, dejándolas
+            # invisibles para _filas_del_lote). Range explícito = sin ambigüedad, igual que ya
+            # hace siguiente_paso() con hoja.update(f"A{fila_idx}:...").
+            hoja = self._hoja()
+            fila_inicio = len(hoja.get_all_values()) + 1
+            fila_fin = fila_inicio + len(filas_nuevas) - 1
+            col_fin = chr(ord('A') + len(_COLUMNAS) - 1)
+            hoja.update(f"A{fila_inicio}:{col_fin}{fila_fin}", filas_nuevas)
         return {"lote_id": lote_id, "total": len(filas_nuevas), "descartados": len(vistos) - len(filas_nuevas)}
 
     def _calcular_opex(self, f: FilaLote, llm, metabase, resultado: dict) -> None:
