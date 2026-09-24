@@ -100,7 +100,8 @@ def _combinar_en(estado: EstadoJob, fila: dict, etiqueta: str, spec: dict) -> No
 
 
 def procesar_siguiente_acta(
-    estado: EstadoJob, llm: AnthropicClient, drive_cfg, sheets: SheetsClient | None = None
+    estado: EstadoJob, llm: AnthropicClient, drive_cfg, sheets: SheetsClient | None = None,
+    permitir_modo_imagen: bool = True,
 ) -> ResultadoPaso:
     """Procesa UNA acta de estado.actas_pendientes (la más reciente primero) y actualiza
     estado.spec_combinado in-place. Devuelve completo=True cuando ya no hace falta seguir
@@ -109,6 +110,11 @@ def procesar_siguiente_acta(
     `sheets` (opcional, Dinovi 2026-09-23 — reanalizar un CO no debe volver a pagar
     descarga+OCR+LLM de una acta YA leída antes): si se pasa, consulta/llena acta_cache.py por
     `act_pdf_url` ANTES de descargar. Se deja opcional para no romper llamadas existentes.
+
+    `permitir_modo_imagen` (Dinovi, 2026-09-24 — comparación masiva de ~400 CO): en False,
+    NUNCA se manda el PDF completo (con fotos) a Claude como fallback — solo el texto OCR ya
+    extraído. Una acta cuyo texto no alcance para llenar un campo simplemente queda incompleta
+    en ese campo, igual que cuando ya falta esa información hoy.
     """
     if not estado.actas_pendientes or not _faltan_campos(estado.spec_combinado):
         return ResultadoPaso(completo=True, estado=estado)
@@ -139,7 +145,7 @@ def procesar_siguiente_acta(
             elif resultado_texto.spec:
                 spec_final = resultado_texto.spec  # parcial — se combina igual, puede completar entre varias actas
 
-        if spec_final is None and len(descarga.bytes_pdf) < acta_downloader.LIMITE_BYTES_MODO_IMAGEN:
+        if permitir_modo_imagen and spec_final is None and len(descarga.bytes_pdf) < acta_downloader.LIMITE_BYTES_MODO_IMAGEN:
             resultado_imagen = analizar_acta_desde_pdf(meta, descarga.bytes_pdf, llm)
             if resultado_imagen.spec:
                 spec_final = resultado_imagen.spec
@@ -154,3 +160,31 @@ def procesar_siguiente_acta(
 
     completo = not estado.actas_pendientes or not _faltan_campos(estado.spec_combinado)
     return ResultadoPaso(completo=completo, estado=estado)
+
+
+def acta_resultado_desde_estado(estado: EstadoJob) -> dict | None:
+    """Convierte el EstadoJob (progreso crudo del job de actas) al `acta_resultado` que espera
+    analizar_alcance_provisional — movido acá (antes vivía privado en api/analizar_alcance.py)
+    para que lote_store.py (comparación masiva, Dinovi 2026-09-24) lo reutilice sin duplicarlo
+    ni depender de la capa api/."""
+    if not estado.actas_usadas:
+        return None
+    ultima = estado.actas_usadas[0]
+
+    def _distintos(vistos: list[dict]) -> list[dict] | None:
+        vistos_unicos = []
+        valores = set()
+        for v in vistos:
+            if v["valor"] not in valores:
+                vistos_unicos.append(v)
+                valores.add(v["valor"])
+        return vistos_unicos if len(vistos_unicos) > 1 else None
+
+    return {
+        "spec": estado.spec_combinado, "observaciones": estado.observaciones, "actas": estado.actas_usadas,
+        "acta_url": ultima["url"], "tipo_acta": ultima["tipo"], "fecha_acta": ultima["fecha"],
+        "tiene_acta_instalacion": estado.tiene_acta_instalacion,
+        "capacidades_encontradas": _distintos(estado.capacidades_vistas),
+        "relaciones_tc_encontradas": _distintos(estado.relaciones_tc_vistas),
+        "cortado_por_tiempo": False,
+    }

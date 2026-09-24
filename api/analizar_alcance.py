@@ -9,36 +9,13 @@ seccionesForzadas?, detalleFaltante?}} — mismo JSON que ya arma Index.html en 
 
 from flask import Blueprint, jsonify, request
 
+from core.services.alcance_combiner import acta_resultado_desde_estado
 from core.services.alcance_provisional import analizar_alcance_provisional
 from core.services.job_store import ESTADO_COMPLETO
 from core.services.wiring import construir_dependencias
 from core.utils import normalizar_codigo
 
 bp = Blueprint("analizar_alcance", __name__)
-
-
-def _acta_resultado_desde_job(estado) -> dict | None:
-    if not estado.actas_usadas:
-        return None  # ninguna acta aportó nada -> equivalente a "sin acta" en el original
-    ultima = estado.actas_usadas[0]
-
-    def _distintos(vistos: list[dict]) -> list[dict] | None:
-        vistos_unicos = []
-        valores = set()
-        for v in vistos:
-            if v["valor"] not in valores:
-                vistos_unicos.append(v)
-                valores.add(v["valor"])
-        return vistos_unicos if len(vistos_unicos) > 1 else None
-
-    return {
-        "spec": estado.spec_combinado, "observaciones": estado.observaciones, "actas": estado.actas_usadas,
-        "acta_url": ultima["url"], "tipo_acta": ultima["tipo"], "fecha_acta": ultima["fecha"],
-        "tiene_acta_instalacion": estado.tiene_acta_instalacion,
-        "capacidades_encontradas": _distintos(estado.capacidades_vistas),
-        "relaciones_tc_encontradas": _distintos(estado.relaciones_tc_vistas),
-        "cortado_por_tiempo": False,  # ya no aplica: el diseño de "una acta por invocación" elimina ese riesgo
-    }
 
 
 @bp.post("/api/analizar_alcance")
@@ -64,7 +41,7 @@ def analizar_alcance():
             return jsonify({"error": f'No hay actas analizadas para "{co}" — llama primero a /api/actas_start (o marca dictamen.sinActas=true si de verdad no quieres leer actas).'}), 409
         if estado.estado != ESTADO_COMPLETO:
             return jsonify({"error": f'El análisis de actas de "{co}" todavía no terminó (estado: {estado.estado}) — sigue llamando a /api/actas_step hasta completo:true.'}), 409
-        acta_resultado = _acta_resultado_desde_job(estado)
+        acta_resultado = acta_resultado_desde_estado(estado)
 
     resultado = analizar_alcance_provisional(deps.sheets, deps.llm, co, dictamen, acta_resultado, filas_metabase_co)
     return jsonify(resultado)

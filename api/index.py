@@ -17,6 +17,9 @@ from api.analizar_alcance import bp as analizar_alcance_bp
 from api.cron_reintentos import bp as cron_reintentos_bp
 from api.guardar_alcance import bp as guardar_alcance_bp
 from api.guardar_opex import bp as guardar_opex_bp
+from api.lote_start import bp as lote_start_bp
+from api.lote_status import bp as lote_status_bp
+from api.lote_step import bp as lote_step_bp
 from api.opex_resolver import bp as opex_resolver_bp
 
 app = Flask(__name__)
@@ -28,6 +31,9 @@ app.register_blueprint(cron_reintentos_bp)
 app.register_blueprint(analizar_alcance_bp)
 app.register_blueprint(guardar_alcance_bp)
 app.register_blueprint(guardar_opex_bp)
+app.register_blueprint(lote_start_bp)
+app.register_blueprint(lote_step_bp)
+app.register_blueprint(lote_status_bp)
 
 _FRONTEND_HTML = (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
 

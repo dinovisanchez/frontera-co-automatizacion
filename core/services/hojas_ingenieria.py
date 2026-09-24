@@ -23,9 +23,9 @@ def extraer_ratio_de_texto(texto: str | None) -> str | None:
     return f"{m.group(1)}/5" if m else None
 
 
-def _leer_fila_por_co_en_hoja(sheets: SheetsClient, spreadsheet_id: str, gid: int, co: str) -> dict | None:
-    """{"header": [...], "fila": [...]} o None — columna A siempre es el CO, misma convención
-    de todo el proyecto."""
+def _leer_datos_de_hoja(sheets: SheetsClient, spreadsheet_id: str, gid: int) -> tuple[list[str], list[list]] | None:
+    """(header_normalizado, filas_crudas) o None si la hoja no existe/no está compartida.
+    Un solo fetch — usado tanto por la búsqueda de UN CO como por el listado masivo."""
     hoja = sheets.hoja_externa_por_gid(spreadsheet_id, gid)
     if not hoja:
         return None
@@ -37,10 +37,37 @@ def _leer_fila_por_co_en_hoja(sheets: SheetsClient, spreadsheet_id: str, gid: in
     # colapsar los internos a un espacio, _col_por_nombre nunca encontraba esas columnas
     # (bug real confirmado 2026-09-22 con CO0200001836: "Factor Fx" siempre salía null).
     header = [re.sub(r"\s+", " ", quitar_acentos(str(h or "").lower())).strip() for h in datos[0]]
-    for fila in datos[1:]:
+    return header, datos[1:]
+
+
+def _leer_fila_por_co_en_hoja(sheets: SheetsClient, spreadsheet_id: str, gid: int, co: str) -> dict | None:
+    """{"header": [...], "fila": [...]} o None — columna A siempre es el CO, misma convención
+    de todo el proyecto."""
+    leido = _leer_datos_de_hoja(sheets, spreadsheet_id, gid)
+    if not leido:
+        return None
+    header, filas = leido
+    for fila in filas:
         if fila and normalizar_codigo(fila[0]) == co:
             return {"header": header, "fila": fila}
     return None
+
+
+def _listar_todas_las_filas_por_co(sheets: SheetsClient, spreadsheet_id: str, gid: int) -> dict[str, dict]:
+    """{co_normalizado: {"header":..., "fila":...}} para TODAS las filas con CO — una sola
+    lectura de la hoja completa, en vez de una por CO (Dinovi, 2026-09-24: comparación masiva
+    de ~400 CO contra "Data cambio NT"/"Normalizaciones_Indirectas" — llamar la versión por-CO
+    400 veces reharía 400 lecturas completas de la misma hoja)."""
+    leido = _leer_datos_de_hoja(sheets, spreadsheet_id, gid)
+    if not leido:
+        return {}
+    header, filas = leido
+    resultado: dict[str, dict] = {}
+    for fila in filas:
+        if not fila or not fila[0]:
+            continue
+        resultado[normalizar_codigo(fila[0])] = {"header": header, "fila": fila}
+    return resultado
 
 
 def _col_por_nombre(header: list[str], nombres_candidatos: str | list[str]) -> int:
@@ -58,15 +85,7 @@ def _col_por_nombre(header: list[str], nombres_candidatos: str | list[str]) -> i
     return -1
 
 
-def buscar_en_hoja_cambio_nt(sheets: SheetsClient, co: str) -> dict | None:
-    """"Data cambio NT" (gid NTCAMBIO_GID): para COs que ya pasaron el análisis de cambio de
-    Nivel de Tensión (Art.19) — trae el SKU de TC/TP/Celda/Medidor y metros de cable YA
-    calculados a mano por ingeniería."""
-    encontrado = _leer_fila_por_co_en_hoja(sheets, NTCAMBIO_SHEET_ID, NTCAMBIO_GID, co)
-    if not encontrado:
-        return None
-    header, fila = encontrado["header"], encontrado["fila"]
-
+def _parsear_fila_cambio_nt(header: list[str], fila: list) -> dict:
     def val(nombre):
         c = _col_por_nombre(header, nombre)
         return fila[c] if c != -1 and c < len(fila) and fila[c] != "" else None
@@ -87,15 +106,24 @@ def buscar_en_hoja_cambio_nt(sheets: SheetsClient, co: str) -> dict | None:
     }
 
 
-def buscar_en_hoja_normalizaciones_indirectas(sheets: SheetsClient, co: str) -> dict | None:
-    """"Normalizaciones_Indirectas" (mismo libro, gid NORMINDIRECTAS_GID): relación de TC/TP ya
-    calculada, cada una con su columna "Cantidad" AL LADO (desplazamiento de columna, no
-    búsqueda por nombre — "cantidad" se repite varias veces en esta hoja)."""
-    encontrado = _leer_fila_por_co_en_hoja(sheets, NTCAMBIO_SHEET_ID, NORMINDIRECTAS_GID, co)
+def buscar_en_hoja_cambio_nt(sheets: SheetsClient, co: str) -> dict | None:
+    """"Data cambio NT" (gid NTCAMBIO_GID): para COs que ya pasaron el análisis de cambio de
+    Nivel de Tensión (Art.19) — trae el SKU de TC/TP/Celda/Medidor y metros de cable YA
+    calculados a mano por ingeniería."""
+    encontrado = _leer_fila_por_co_en_hoja(sheets, NTCAMBIO_SHEET_ID, NTCAMBIO_GID, co)
     if not encontrado:
         return None
-    header, fila = encontrado["header"], encontrado["fila"]
+    return _parsear_fila_cambio_nt(encontrado["header"], encontrado["fila"])
 
+
+def listar_todos_cambio_nt(sheets: SheetsClient) -> dict[str, dict]:
+    """{co_normalizado: campos} para TODAS las filas de "Data cambio NT" — una sola lectura de
+    la hoja (ver _listar_todas_las_filas_por_co)."""
+    filas = _listar_todas_las_filas_por_co(sheets, NTCAMBIO_SHEET_ID, NTCAMBIO_GID)
+    return {co: _parsear_fila_cambio_nt(v["header"], v["fila"]) for co, v in filas.items()}
+
+
+def _parsear_fila_norm_indirectas(header: list[str], fila: list) -> dict:
     def idx(nombre):
         return _col_por_nombre(header, nombre)
 
@@ -120,6 +148,22 @@ def buscar_en_hoja_normalizaciones_indirectas(sheets: SheetsClient, co: str) -> 
         "cable": en(i_cable), "cable_cantidad": despues(i_cable, 1), "costo_cable": despues(i_cable, 2),
         "celda": en(i_celda), "costo_celda": despues(i_celda, 1),
     }
+
+
+def buscar_en_hoja_normalizaciones_indirectas(sheets: SheetsClient, co: str) -> dict | None:
+    """"Normalizaciones_Indirectas" (mismo libro, gid NORMINDIRECTAS_GID): relación de TC/TP ya
+    calculada, cada una con su columna "Cantidad" AL LADO (desplazamiento de columna, no
+    búsqueda por nombre — "cantidad" se repite varias veces en esta hoja)."""
+    encontrado = _leer_fila_por_co_en_hoja(sheets, NTCAMBIO_SHEET_ID, NORMINDIRECTAS_GID, co)
+    if not encontrado:
+        return None
+    return _parsear_fila_norm_indirectas(encontrado["header"], encontrado["fila"])
+
+
+def listar_todos_normalizaciones_indirectas(sheets: SheetsClient) -> dict[str, dict]:
+    """{co_normalizado: campos} para TODAS las filas de "Normalizaciones_Indirectas"."""
+    filas = _listar_todas_las_filas_por_co(sheets, NTCAMBIO_SHEET_ID, NORMINDIRECTAS_GID)
+    return {co: _parsear_fila_norm_indirectas(v["header"], v["fila"]) for co, v in filas.items()}
 
 
 def _propiedad_activos_a_uso(texto: str | None) -> str | None:

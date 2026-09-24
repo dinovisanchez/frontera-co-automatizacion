@@ -146,6 +146,23 @@
 
   <div id="resultadosAlcance"></div>
 
+  <h1 style="margin-top:40px;">Comparación Masiva Quinquenales</h1>
+  <p class="subtitle">Pega muchos códigos CO de una vez. Se revisa cuáles están en "Data cambio NT" o "Normalizaciones_Indirectas" (libro Quinquenales | Indirectas - Art.19) — el que no esté en ninguna de las dos se descarta sin gastar nada. A los que sí califican se les corre el mismo análisis (Metabase + actas en modo texto, sin leer fotografías del PDF) y se compara contra lo que esa hoja ya tiene anotado.</p>
+
+  <div class="card">
+    <div class="card-title">Comparación Masiva Quinquenales</div>
+    <label for="cosLote">Códigos CO (muchos a la vez)</label>
+    <textarea id="cosLote" rows="6" placeholder="CO0800004954, CO0400005205..."></textarea>
+    <div class="toolbar">
+      <button id="btnIniciarLote">Iniciar comparación</button>
+    </div>
+    <div class="spinner" id="spinnerLote">Iniciando…</div>
+    <div id="resumenLote" style="margin-top:8px;font-size:13px;color:var(--text-sub);"></div>
+    <p class="req-note">Los CO que no estén en ninguna de las 2 hojas se saltan en silencio. El resto se procesa uno por uno (puede tardar — cada CO necesita leer sus actas); puedes cerrar y volver, el progreso queda guardado.</p>
+  </div>
+
+  <div id="resultadosLote"></div>
+
   <script>
     // ---------- Utilidades básicas ----------
     function escapeHtml(s) {
@@ -950,6 +967,146 @@
 
       estado.filas.push({ idSku: idSku, idCantidad: idCantidad, idTipo: idTipo, idExcluir: idExcluir, grupo: p.grupo || '' });
     }
+
+    // ---------- Comparación Masiva Quinquenales ----------
+    var ETIQUETA_CATEGORIA_LOTE = { tc: 'TC', tp: 'TP', medidor: 'Medidor', celda: 'Celda' };
+
+    function loteCompleto(e) { return !!e && e.completo_lote === true; }
+
+    /** Igual patrón que asegurarActasCompletas: arranca el lote y hace polling a
+     *  /api/lote_step hasta que todos los CO calificados queden completo/error. */
+    async function correrLote(cos, onProgreso) {
+      onProgreso('Revisando cuáles CO están en Data cambio NT / Normalizaciones_Indirectas…');
+      var inicio = await postConReintento('/api/lote_start', { cos: cos }, function (e, intento) {
+        onProgreso('Se pasó del tiempo iniciando el lote (intento ' + intento + ') — reintentando…');
+      });
+      var loteId = inicio.lote_id;
+      onProgreso(inicio.total + ' CO calificaron (' + inicio.descartados + ' descartados — no estaban en ninguna de las 2 hojas).');
+
+      var paso = { completo_lote: inicio.total === 0 };
+      var vueltas = 0;
+      var limiteVueltas = inicio.total * 8 + 10; // ~8 pasos por CO (hasta 5 actas + análisis final), con margen
+      while (!loteCompleto(paso) && vueltas < limiteVueltas) {
+        vueltas++;
+        paso = await postConReintento('/api/lote_step', { lote_id: loteId }, function (e, intento) {
+          onProgreso('Un paso tardó más de lo normal (intento ' + intento + ') — reintentando, el progreso ya hecho no se pierde…');
+        });
+        onProgreso('Procesando ' + (paso.co_actual || '…') + ' — ' + paso.procesados + ' de ' + paso.total + ' CO listos.');
+      }
+      if (!loteCompleto(paso) && inicio.total > 0) {
+        throw new Error('El lote no terminó tras muchos pasos — vuelve a darle "Iniciar comparación", sigue donde quedó (mismo lote_id no se reutiliza, pero cada CO ya leído usa el caché de actas).');
+      }
+      return loteId;
+    }
+
+    function renderFilaLote(f) {
+      var html = '<div class="card" style="margin-top:10px;">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">';
+      html += '<div class="card-title" style="margin:0;">' + escapeHtml(f.co) + '</div>';
+      if (f.estado === 'completo') {
+        html += (f.comparacion && f.comparacion.coincide_total)
+          ? '<span style="color:var(--accent);font-weight:600;">✓ Coincide</span>'
+          : '<span style="color:var(--red);font-weight:600;">⚠ No coincide</span>';
+      } else if (f.estado === 'error') {
+        html += '<span style="color:var(--red);font-weight:600;">Error</span>';
+      } else {
+        html += '<span style="color:var(--text-faint);">…</span>';
+      }
+      html += '</div>';
+
+      html += '<div style="font-size:11.5px;color:var(--text-faint);margin:4px 0;">Fuente: ' + (f.fuente === 'cambio_nt' ? 'Data cambio NT' : 'Normalizaciones_Indirectas') + '</div>';
+
+      var puedeSeleccionar = f.estado === 'completo' && f.comparacion && f.comparacion.coincide_total;
+      html += '<label class="checkbox-line"><input type="checkbox" class="chkLote" data-co="' + escapeHtml(f.co) + '"' + (puedeSeleccionar ? '' : ' disabled') + ' /> Incluir en guardado masivo' + (puedeSeleccionar ? '' : ' (bloqueado — no coincide del todo, revisa a mano)') + '</label>';
+
+      if (f.comparacion && f.comparacion.campos && Object.keys(f.comparacion.campos).length) {
+        html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px;">';
+        html += '<thead><tr style="text-align:left;color:var(--text-sub);"><th style="padding:4px 6px;">Categoría</th><th style="padding:4px 6px;">Nuestro</th><th style="padding:4px 6px;">Hoja</th><th style="padding:4px 6px;"></th></tr></thead><tbody>';
+        Object.keys(f.comparacion.campos).forEach(function (cat) {
+          var c = f.comparacion.campos[cat];
+          html += '<tr style="border-top:1px solid var(--border-soft);">' +
+            '<td style="padding:4px 6px;">' + (ETIQUETA_CATEGORIA_LOTE[cat] || cat) + '</td>' +
+            '<td style="padding:4px 6px;">' + escapeHtml(c.nuestro || '—') + '</td>' +
+            '<td style="padding:4px 6px;">' + escapeHtml(c.hoja || '—') + '</td>' +
+            '<td style="padding:4px 6px;">' + (c.coincide ? '✓' : '⚠') + '</td></tr>';
+        });
+        html += '</tbody></table>';
+      } else if (f.estado === 'error') {
+        html += '<div class="item warn">' + escapeHtml((f.observaciones || []).slice(-1).join('') || 'Error desconocido') + '</div>';
+      } else if (f.estado === 'completo') {
+        html += '<div class="req-note" style="padding:0;border:none;">La hoja no trae nada comparable para este CO en las categorías conocidas (TC/TP/Medidor/Celda).</div>';
+      }
+
+      html += '</div>';
+      return html;
+    }
+
+    function agregarBotonGuardarSeleccionadosLote(filas) {
+      var destino = document.getElementById('resultadosLote');
+      destino.insertAdjacentHTML('beforeend',
+        '<div class="card" style="margin-top:10px;"><button id="btnGuardarSeleccionadosLote">Guardar seleccionados en Equipos</button>' +
+        '<div class="spinner" id="spinnerGuardarLote">Guardando…</div><div id="resultGuardarLote" style="margin-top:8px;"></div></div>');
+
+      var filasPorCo = {};
+      filas.forEach(function (f) { filasPorCo[f.co] = f; });
+
+      document.getElementById('btnGuardarSeleccionadosLote').addEventListener('click', async function () {
+        var seleccionados = Array.prototype.slice.call(document.querySelectorAll('.chkLote:checked')).map(function (chk) { return chk.getAttribute('data-co'); });
+        if (!seleccionados.length) { alert('No hay ningún CO seleccionado.'); return; }
+        setRunning('btnGuardarSeleccionadosLote', 'spinnerGuardarLote', true);
+        var destinoResult = document.getElementById('resultGuardarLote');
+        destinoResult.innerHTML = '';
+        var ok = [], fallidos = [];
+        for (var i = 0; i < seleccionados.length; i++) {
+          var co = seleccionados[i];
+          var f = filasPorCo[co];
+          // Re-valida server-side de verdad: nunca confiar solo en que el checkbox esté marcado
+          // (Dinovi, 2026-09-24: bloquear el guardado masivo de los que no coincidan).
+          if (!f || !f.comparacion || !f.comparacion.coincide_total || !f.resultado) {
+            fallidos.push(co + ' (ya no coincide, se saltó)');
+            continue;
+          }
+          var reclasificado = f.resultado.diagnostico && f.resultado.diagnostico.reclasificado;
+          var filasEquipos = (f.resultado.propuesta || []).filter(function (p) { return p.sku; }).map(function (p) {
+            return { sku: p.sku, cantidad: p.cantidad, tipo: p.tipo };
+          });
+          if (!filasEquipos.length) { fallidos.push(co + ' (sin SKU para guardar)'); continue; }
+          try {
+            await fetchJSON('POST', '/api/guardar_alcance', { co: co, filas: filasEquipos, maniobra_respaldo: reclasificado ? 'Cambio NT' : 'Normalización' });
+            ok.push(co);
+          } catch (e) {
+            fallidos.push(co + ' (' + e.message + ')');
+          }
+        }
+        setRunning('btnGuardarSeleccionadosLote', 'spinnerGuardarLote', false);
+        destinoResult.innerHTML = '<div class="line ok">✓ Guardados: ' + ok.length + (ok.length ? ' (' + escapeHtml(ok.join(', ')) + ')' : '') + '</div>' +
+          (fallidos.length ? '<div class="item warn">No guardados: ' + escapeHtml(fallidos.join(', ')) + '</div>' : '');
+      });
+    }
+
+    document.getElementById('btnIniciarLote').addEventListener('click', function () {
+      var texto = document.getElementById('cosLote').value;
+      var cos = texto.split(/[\s,;]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+      if (!cos.length) { alert('Pega al menos un código CO.'); return; }
+
+      setRunning('btnIniciarLote', 'spinnerLote', true);
+      var resumen = document.getElementById('resumenLote');
+      resumen.textContent = '';
+      document.getElementById('resultadosLote').innerHTML = '';
+
+      correrLote(cos, function (msg) { resumen.textContent = msg; }).then(function (loteId) {
+        return fetchJSON('GET', '/api/lote_status?lote_id=' + encodeURIComponent(loteId));
+      }).then(function (r) {
+        setRunning('btnIniciarLote', 'spinnerLote', false);
+        document.getElementById('resultadosLote').innerHTML = r.filas.map(renderFilaLote).join('');
+        var totalOk = r.filas.filter(function (f) { return f.comparacion && f.comparacion.coincide_total; }).length;
+        resumen.textContent = r.filas.length + ' CO procesados — ' + totalOk + ' coinciden, ' + (r.filas.length - totalOk) + ' requieren revisión manual.';
+        if (r.filas.length) agregarBotonGuardarSeleccionadosLote(r.filas);
+      }).catch(function (err) {
+        setRunning('btnIniciarLote', 'spinnerLote', false);
+        document.getElementById('resultadosLote').innerHTML = renderError(err);
+      });
+    });
   </script>
 </body>
 </html>
