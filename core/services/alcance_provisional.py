@@ -12,7 +12,7 @@ import re
 from core.services.catalogo_capex import candidatos_por_categoria_alcance, obtener_catalogo_ref_capex
 from core.services.certificado_extractor import extraer_ratio_de_certificado_calibracion
 from core.services.clasificador_medida import NtCambio, clasificar_tipo_medida
-from core.services.deteccion_equipos import detectar_secciones_deficientes, equipos_actuales_metabase
+from core.services.deteccion_equipos import detectar_secciones_deficientes, equipos_actuales_metabase, listar_equipos_por_estado
 from core.services.hoja_origen_equipos import leer_equipos_existentes, leer_origen_alcance
 from core.services.hojas_ingenieria import buscar_en_hoja_cambio_nt, buscar_en_hoja_maestra, buscar_en_hoja_normalizaciones_indirectas
 from core.services.propuesta_equipos import construir_propuesta_equipos
@@ -76,6 +76,7 @@ def analizar_alcance_provisional(sheets, llm, co_raw: str, dictamen: dict, acta_
     origen = leer_origen_alcance(sheets, co)
     equipos = leer_equipos_existentes(sheets, co)
     equipos_actuales = equipos_actuales_metabase(filas_metabase_co)
+    equipos_por_estado = listar_equipos_por_estado(filas_metabase_co)
 
     spec = dict(acta_resultado["spec"]) if acta_resultado else {}
     maestro = buscar_en_hoja_maestra(sheets, co)
@@ -164,6 +165,7 @@ def analizar_alcance_provisional(sheets, llm, co_raw: str, dictamen: dict, acta_
     return {
         "co": co, "cliente": origen["cliente"], "or": origen["or"], "maniobra": origen["maniobra"],
         "origen_encontrado": len(origen["filas"]) > 0, "equipos_existentes": equipos, "equipos_actuales": equipos_actuales,
+        "equipos_por_estado": equipos_por_estado,
         "nt_cambio": nt_cambio_raw, "norm_indirectas": norm_indirectas, "maestro": maestro,
         "acta": acta_resultado, "spec": spec, "diagnostico": diagnostico_dict,
         "secciones": dictamen.get("secciones"), "propuesta": resultado["propuesta"], "alertas": alertas,

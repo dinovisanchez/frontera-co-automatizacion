@@ -587,6 +587,8 @@
         }
       }
 
+      html += tablaEquiposPorEstado(res.equipos_por_estado);
+
       html += '<div class="subsection">';
       html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" id="' + id + '_capexToggle">';
       html += '<h3 style="margin:0;">Propuesta (CAPEX)</h3>';
@@ -986,6 +988,38 @@
       estado.filas.push({ idSku: idSku, idCantidad: idCantidad, idTipo: idTipo, idExcluir: idExcluir, grupo: p.grupo || '' });
     }
 
+    /** Tabla tipo_sku/marca/sku/serial/estado_material de Metabase, agrupada en Asignados/
+     *  Instalados/Otros (Dinovi, 2026-09-24) — reutilizada tanto en la tarjeta individual como
+     *  en cada card del lote masivo. */
+    function tablaEquiposPorEstado(equiposPorEstado) {
+      if (!equiposPorEstado) return '';
+      var GRUPOS = [
+        { key: 'asignados', titulo: 'Asignados' },
+        { key: 'instalados', titulo: 'Instalados' },
+        { key: 'otros', titulo: 'Otros estados' }
+      ];
+      var conDatos = GRUPOS.filter(function (g) { return (equiposPorEstado[g.key] || []).length; });
+      if (!conDatos.length) return '';
+      var html = '<div class="subsection"><h3>Equipos en Metabase (por estado)</h3>';
+      conDatos.forEach(function (g) {
+        var filas = equiposPorEstado[g.key];
+        html += '<div style="font-size:11.5px;color:var(--text-faint);margin:6px 0 2px;">' + g.titulo + ' (' + filas.length + ')</div>';
+        html += '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+        html += '<thead><tr style="text-align:left;color:var(--text-sub);"><th style="padding:4px 6px;">Equipo</th><th style="padding:4px 6px;">Marca</th><th style="padding:4px 6px;">SKU</th><th style="padding:4px 6px;">Serial</th><th style="padding:4px 6px;">Estado</th></tr></thead><tbody>';
+        filas.forEach(function (e) {
+          html += '<tr style="border-top:1px solid var(--border-soft);">' +
+            '<td style="padding:4px 6px;">' + escapeHtml(e.tipo_sku || '—') + '</td>' +
+            '<td style="padding:4px 6px;">' + escapeHtml(e.marca || '—') + '</td>' +
+            '<td style="padding:4px 6px;">' + escapeHtml(e.sku || '—') + '</td>' +
+            '<td style="padding:4px 6px;">' + escapeHtml(e.serial || '—') + '</td>' +
+            '<td style="padding:4px 6px;">' + escapeHtml(e.estado_material || '—') + '</td></tr>';
+        });
+        html += '</tbody></table>';
+      });
+      html += '</div>';
+      return html;
+    }
+
     // ---------- Comparación Masiva Quinquenales ----------
     var ETIQUETA_CATEGORIA_LOTE = { tc: 'TC', tp: 'TP', medidor: 'Medidor', celda: 'Celda' };
 
@@ -1067,6 +1101,8 @@
       } else if (f.opexAlerta) {
         html += '<div class="item warn" style="margin-top:8px;">⚠ OPEX: ' + escapeHtml(f.opexAlerta) + '</div>';
       }
+
+      html += tablaEquiposPorEstado(f.resultado && f.resultado.equipos_por_estado);
 
       html += '</div>';
       return html;

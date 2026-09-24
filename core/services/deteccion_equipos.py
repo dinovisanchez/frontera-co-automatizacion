@@ -92,6 +92,37 @@ def equipos_actuales_metabase(filas_metabase_co: list[dict]) -> dict:
     return resultado
 
 
+def listar_equipos_por_estado(filas_metabase_co: list[dict]) -> dict:
+    """TODAS las filas de Metabase con tipo_sku para este CO, agrupadas por estado_material
+    (Dinovi, 2026-09-24: "que equipos estaban asignados en esa CO y cuales estan como asignados
+    y cuales como instalados") — a diferencia de equipos_actuales_metabase (que colapsa al más
+    reciente por categoría, para el diagnóstico interno), esto muestra cada equipo tal cual
+    viene en la pregunta de Metabase: tipo_sku, marca, sku, serial, estado_material.
+
+    Valores reales de estado_material en producción (verificado 2026-09-24): ASIGNADO,
+    INSTALADO, AVERIADO, DISPONIBLE, NO ENCONTRADO, PENDIENTE, PENDIENTE CERTIFICADOS, VENDIDO
+    (o vacío) — solo ASIGNADO/INSTALADO tienen grupo propio, el resto cae en "otros" para no
+    perderlos."""
+    grupos: dict[str, list[dict]] = {"asignados": [], "instalados": [], "otros": []}
+    for r in filas_metabase_co:
+        tipo_sku = (r.get("tipo_sku") or "").strip()
+        if not tipo_sku:
+            continue
+        item = {
+            "tipo_sku": tipo_sku, "marca": r.get("marca") or "", "sku": r.get("sku") or "",
+            "serial": r.get("serial") or "", "estado_material": r.get("estado_material") or "",
+            "fecha_visita": r.get("fecha_visita") or "",
+        }
+        estado = item["estado_material"].strip().upper()
+        if estado == "ASIGNADO":
+            grupos["asignados"].append(item)
+        elif estado == "INSTALADO":
+            grupos["instalados"].append(item)
+        else:
+            grupos["otros"].append(item)
+    return grupos
+
+
 _PALABRAS_PROBLEMA = ["mal estado", "sin certificado", "sin conformidad", "no cumple", "deteriorad", "danad", "obsolet", "incompleto", "no hay", "sin informacion", "requiere", "recomienda", "falta", "reemplaz", "debe instalar", "se debe"]
 _NOMBRES_POR_CATEGORIA = {"medidor": ["medidor"], "tc": ["tc ", " tc", "transformador de corriente"], "tp": ["tp ", " tp", "transformador de potencial", "transformador de tension"], "bloque_pruebas": ["bloque de prueba"], "cable": ["cable"], "celda": ["celda"]}
 
