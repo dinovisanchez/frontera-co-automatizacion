@@ -1055,6 +1055,19 @@
         html += '<div class="req-note" style="padding:0;border:none;">La hoja no trae nada comparable para este CO en las categorías conocidas (TC/TP/Medidor/Celda).</div>';
       }
 
+      if (f.opex && f.opex.filas && f.opex.filas.length) {
+        html += '<div style="font-size:11.5px;color:var(--text-faint);margin-top:10px;">Mano de obra (OPEX) — operador: ' + escapeHtml(f.opex.operador || '?') + '</div>';
+        html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:4px;">';
+        html += '<thead><tr style="text-align:left;color:var(--text-sub);"><th style="padding:4px 6px;">Maniobra</th><th style="padding:4px 6px;text-align:right;">Cant.</th></tr></thead><tbody>';
+        f.opex.filas.forEach(function (fila) {
+          html += '<tr style="border-top:1px solid var(--border-soft);"><td style="padding:4px 6px;">' + escapeHtml(fila.maniobra) + '</td><td style="padding:4px 6px;text-align:right;">' + fila.cantidad + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        if (f.opex.totalGeneral) html += '<div style="text-align:right;font-size:11.5px;font-weight:600;margin-top:2px;">Total: ' + formatoPesos(f.opex.totalGeneral) + '</div>';
+      } else if (f.opexAlerta) {
+        html += '<div class="item warn" style="margin-top:8px;">⚠ OPEX: ' + escapeHtml(f.opexAlerta) + '</div>';
+      }
+
       html += '</div>';
       return html;
     }
@@ -1062,7 +1075,7 @@
     function agregarBotonGuardarSeleccionadosLote(filas) {
       var destino = document.getElementById('resultadosLote');
       destino.insertAdjacentHTML('beforeend',
-        '<div class="card" style="margin-top:10px;"><button id="btnGuardarSeleccionadosLote">Guardar seleccionados en Equipos</button>' +
+        '<div class="card" style="margin-top:10px;"><button id="btnGuardarSeleccionadosLote">Guardar seleccionados en Equipos + OPEX</button>' +
         '<div class="spinner" id="spinnerGuardarLote">Guardando…</div><div id="resultGuardarLote" style="margin-top:8px;"></div></div>');
 
       var filasPorCo = {};
@@ -1091,9 +1104,19 @@
           if (!filasEquipos.length) { fallidos.push(co + ' (sin SKU para guardar)'); continue; }
           try {
             await fetchJSON('POST', '/api/guardar_alcance', { co: co, filas: filasEquipos, maniobra_respaldo: reclasificado ? 'Cambio NT' : 'Normalización' });
-            ok.push(co);
           } catch (e) {
-            fallidos.push(co + ' (' + e.message + ')');
+            fallidos.push(co + ' — Equipos: ' + e.message);
+            continue;
+          }
+          if (f.opex && f.opex.filas && f.opex.filas.length) {
+            try {
+              await fetchJSON('POST', '/api/guardar_opex', { co: co, operador: f.opex.operador, filas: f.opex.filas.map(function (fila) { return { maniobra: fila.maniobra, cantidad: fila.cantidad }; }) });
+              ok.push(co + ' (Equipos + OPEX)');
+            } catch (e) {
+              ok.push(co + ' (solo Equipos — OPEX falló: ' + e.message + ')');
+            }
+          } else {
+            ok.push(co + ' (solo Equipos — sin OPEX calculado)');
           }
         }
         setRunning('btnGuardarSeleccionadosLote', 'spinnerGuardarLote', false);

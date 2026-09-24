@@ -25,6 +25,8 @@ from core.services.alcance_provisional import analizar_alcance_provisional
 from core.services.comparador_alcance import comparar_propuesta_vs_hoja
 from core.services.hojas_ingenieria import listar_todos_cambio_nt, listar_todos_normalizaciones_indirectas
 from core.services.job_store import EstadoJob
+from core.services.opex_desde_equipos import construir_opex_desde_equipos
+from core.services.operator_resolver import FUENTE_PENDIENTE_MANUAL, resolver_operador_red
 from core.utils import normalizar_codigo
 
 SHEET_LOTE = "PyLoteAlcance"
@@ -32,7 +34,7 @@ _COLUMNAS = [
     "lote_id", "co", "fuente", "estado", "datos_hoja_json",
     "actas_pendientes_json", "spec_combinado_json", "actas_usadas_json", "observaciones_json",
     "tiene_acta_instalacion", "capacidades_vistas_json", "relaciones_tc_vistas_json",
-    "resultado_json", "comparacion_json", "actualizado_en",
+    "resultado_json", "comparacion_json", "opex_resultado_json", "opex_alerta", "actualizado_en",
 ]
 
 ESTADO_PENDIENTE = "pendiente"
@@ -52,6 +54,8 @@ class FilaLote:
     job: EstadoJob
     resultado: dict | None = None
     comparacion: dict | None = None
+    opex_resultado: dict | None = None
+    opex_alerta: str | None = None
 
 
 class LoteStore:
@@ -79,6 +83,8 @@ class LoteStore:
             json.dumps(j.relaciones_tc_vistas, ensure_ascii=False),
             json.dumps(f.resultado, ensure_ascii=False) if f.resultado is not None else "",
             json.dumps(f.comparacion, ensure_ascii=False) if f.comparacion is not None else "",
+            json.dumps(f.opex_resultado, ensure_ascii=False) if f.opex_resultado is not None else "",
+            f.opex_alerta or "",
             str(int(time.time())),
         ]
 
@@ -99,6 +105,8 @@ class LoteStore:
             datos_hoja=json.loads(fila[4] or "{}"), job=job,
             resultado=json.loads(fila[12]) if fila[12] else None,
             comparacion=json.loads(fila[13]) if fila[13] else None,
+            opex_resultado=json.loads(fila[14]) if fila[14] else None,
+            opex_alerta=fila[15] or None,
         )
 
     def crear_lote(self, cos_pegados: list[str]) -> dict:
@@ -125,6 +133,32 @@ class LoteStore:
         if filas_nuevas:
             self._hoja().append_rows(filas_nuevas)
         return {"lote_id": lote_id, "total": len(filas_nuevas), "descartados": len(vistos) - len(filas_nuevas)}
+
+    def _calcular_opex(self, f: FilaLote, llm, metabase, resultado: dict) -> None:
+        """OPEX del lote (Dinovi, 2026-09-24): "que cumpla la misma función que la primera
+        pestaña, solo que masivo" — automático, sin exclusiones manuales de fila (no hay quién
+        las marque en un lote de 400), es_instalacion_nueva=False (estos CO son cambios de
+        equipo por Art.19, no instalaciones nuevas) y secciones = las que ya detectó el
+        dictamen (igual que si nadie hubiera excluido nada en la pantalla individual)."""
+        try:
+            or_res = resolver_operador_red(self._sheets, metabase, llm, f.co)
+            if or_res.fuente == FUENTE_PENDIENTE_MANUAL:
+                f.opex_alerta = or_res.motivo
+                return
+            diagnostico, spec, propuesta = resultado["diagnostico"], resultado["spec"], resultado["propuesta"]
+            celda_sku = next((p.get("sku") for p in propuesta if (p.get("grupo") or "").strip().lower() == "celda"), None)
+            filas_cable = [{"grupo": p.get("grupo"), "cantidad": p.get("cantidad", 1)} for p in propuesta if "cable" in (p.get("grupo") or "").lower()]
+            opex = construir_opex_desde_equipos(
+                self._sheets, f.co, or_res.or_raw, diagnostico["tipo_medida_final"], spec.get("ubicacion_medida"),
+                resultado.get("secciones") or {}, False, filas_cable,
+                tipo_medida_actual=diagnostico.get("tipo_medida_actual"), celda_sku=celda_sku,
+            )
+            f.opex_resultado = {
+                "operador": opex.operador, "orOriginal": opex.or_original, "fuenteOperador": or_res.fuente,
+                "filas": opex.filas, "totalGeneral": opex.total_general, "alertas": opex.alertas, "nota": opex.nota,
+            }
+        except Exception as e:  # noqa: BLE001 — un fallo de OPEX no debe perder el CAPEX ya calculado
+            f.opex_alerta = f"No se pudo calcular OPEX: {e}"
 
     def _filas_del_lote(self, hoja, lote_id: str) -> list[tuple[int, list]]:
         valores = hoja.get_all_values()
@@ -161,6 +195,7 @@ class LoteStore:
                 resultado = analizar_alcance_provisional(self._sheets, llm, f.co, dictamen, acta_resultado, filas_metabase_co)
                 f.resultado = resultado
                 f.comparacion = comparar_propuesta_vs_hoja(resultado["propuesta"], f.datos_hoja, f.fuente)
+                self._calcular_opex(f, llm, metabase, resultado)
                 f.estado = ESTADO_COMPLETO
                 procesados += 1
         except Exception as e:  # noqa: BLE001 — un CO con error no debe tumbar el resto del lote
@@ -183,6 +218,7 @@ class LoteStore:
             resultado.append({
                 "co": f.co, "fuente": f.fuente, "estado": f.estado,
                 "resultado": f.resultado, "comparacion": f.comparacion,
+                "opex": f.opex_resultado, "opexAlerta": f.opex_alerta,
                 "observaciones": f.job.observaciones,
             })
         return resultado
