@@ -19,7 +19,7 @@ import time
 import uuid
 from dataclasses import dataclass
 
-from core.data_sources.sheets_client import SheetsClient
+from core.data_sources.sheets_client import SheetsClient, con_reintento_sheets
 from core.services import alcance_combiner
 from core.services.alcance_provisional import analizar_alcance_provisional
 from core.services.comparador_alcance import comparar_propuesta_vs_hoja
@@ -67,7 +67,7 @@ class LoteStore:
             return self._sheets.hoja_por_nombre(SHEET_LOTE)
         except RuntimeError:
             hoja = self._sheets.crear_hoja(SHEET_LOTE, filas=5000, columnas=len(_COLUMNAS))
-            hoja.append_row(_COLUMNAS)
+            con_reintento_sheets(hoja.append_row, _COLUMNAS)
             return hoja
 
     def _fila_valores(self, f: FilaLote) -> list:
@@ -139,10 +139,10 @@ class LoteStore:
             # invisibles para _filas_del_lote). Range explícito = sin ambigüedad, igual que ya
             # hace siguiente_paso() con hoja.update(f"A{fila_idx}:...").
             hoja = self._hoja()
-            fila_inicio = len(hoja.get_all_values()) + 1
+            fila_inicio = len(con_reintento_sheets(hoja.get_all_values)) + 1
             fila_fin = fila_inicio + len(filas_nuevas) - 1
             col_fin = chr(ord('A') + len(_COLUMNAS) - 1)
-            hoja.update(f"A{fila_inicio}:{col_fin}{fila_fin}", filas_nuevas)
+            con_reintento_sheets(hoja.update, f"A{fila_inicio}:{col_fin}{fila_fin}", filas_nuevas)
         return {"lote_id": lote_id, "total": len(filas_nuevas), "descartados": len(vistos) - len(filas_nuevas)}
 
     def _calcular_opex(self, f: FilaLote, llm, metabase, resultado: dict) -> None:
@@ -172,7 +172,7 @@ class LoteStore:
             f.opex_alerta = f"No se pudo calcular OPEX: {e}"
 
     def _filas_del_lote(self, hoja, lote_id: str) -> list[tuple[int, list]]:
-        valores = hoja.get_all_values()
+        valores = con_reintento_sheets(hoja.get_all_values)
         return [(i, fila) for i, fila in enumerate(valores[1:], start=2) if fila and fila[0] == lote_id]
 
     def siguiente_paso(self, llm, drive_cfg, metabase, lote_id: str) -> dict:
@@ -214,7 +214,7 @@ class LoteStore:
             f.job.observaciones.append(f"Error procesando este CO: {e}")
             procesados += 1
 
-        hoja.update(f"A{fila_idx}:{chr(ord('A') + len(_COLUMNAS) - 1)}{fila_idx}", [self._fila_valores(f)])
+        con_reintento_sheets(hoja.update, f"A{fila_idx}:{chr(ord('A') + len(_COLUMNAS) - 1)}{fila_idx}", [self._fila_valores(f)])
         return {
             "lote_id": lote_id, "completo_lote": procesados >= total, "procesados": procesados,
             "total": total, "co_actual": f.co, "estado_co": f.estado,

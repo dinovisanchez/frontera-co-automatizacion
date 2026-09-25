@@ -17,7 +17,7 @@ import json
 import time
 from dataclasses import dataclass, field
 
-from core.data_sources.sheets_client import SheetsClient
+from core.data_sources.sheets_client import SheetsClient, con_reintento_sheets
 
 SHEET_JOBS = "PyAsyncJobs"
 _COLUMNAS = [
@@ -57,11 +57,11 @@ class JobStore:
             return self._sheets.hoja_por_nombre(SHEET_JOBS)
         except RuntimeError:
             hoja = self._sheets.crear_hoja(SHEET_JOBS, filas=1000, columnas=len(_COLUMNAS))
-            hoja.append_row(_COLUMNAS)
+            con_reintento_sheets(hoja.append_row, _COLUMNAS)
             return hoja
 
     def _fila_de(self, hoja, co: str) -> int | None:
-        valores = hoja.get_all_values()
+        valores = con_reintento_sheets(hoja.get_all_values)
         for i, fila in enumerate(valores[1:], start=2):
             if fila and fila[0] == co:
                 return i
@@ -77,7 +77,7 @@ class JobStore:
         fila_idx = self._fila_de(hoja, co)
         if fila_idx is None:
             return None
-        fila = hoja.row_values(fila_idx)
+        fila = con_reintento_sheets(hoja.row_values, fila_idx)
         fila += [""] * (len(_COLUMNAS) - len(fila))
         return EstadoJob(
             co=fila[0],
@@ -110,10 +110,10 @@ class JobStore:
             # Rango explícito, no append_row: sin rango, Sheets "busca una tabla" para decidir
             # en qué columna insertar, y esa búsqueda puede desviarse (ver el mismo bug real
             # encontrado y corregido en lote_store.crear_lote, Dinovi 2026-09-24).
-            fila_nueva = len(hoja.get_all_values()) + 1
-            hoja.update(f"A{fila_nueva}:J{fila_nueva}", [fila_valores])
+            fila_nueva = len(con_reintento_sheets(hoja.get_all_values)) + 1
+            con_reintento_sheets(hoja.update, f"A{fila_nueva}:J{fila_nueva}", [fila_valores])
         else:
-            hoja.update(f"A{fila_idx}:J{fila_idx}", [fila_valores])
+            con_reintento_sheets(hoja.update, f"A{fila_idx}:J{fila_idx}", [fila_valores])
 
     def guardar_progreso(self, estado: EstadoJob) -> None:
         self._guardar(estado)
@@ -131,7 +131,7 @@ class JobStore:
         """Usado por cron_reintentos.py para encontrar jobs que quedaron a medias (ej. el
         frontend se desconectó antes de terminar de hacer polling)."""
         hoja = self._hoja()
-        valores = hoja.get_all_values()
+        valores = con_reintento_sheets(hoja.get_all_values)
         return [fila[0] for fila in valores[1:] if len(fila) > 1 and fila[1] == estado]
 
 
