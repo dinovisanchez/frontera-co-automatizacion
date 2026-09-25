@@ -101,8 +101,14 @@ def clasificar_tipo_medida(
 
     # Regla 9d-previa (Codigo.gs 3661-3678): la sola presencia en "Data cambio NT" o
     # "Normalizaciones_Indirectas" YA es el dictamen — indirecta + exclusivo, sin condición...
-    # salvo que el usuario ya haya confirmado a mano que es compartido (ver docstring).
-    if (nt_cambio or norm_indirectas) and not trafo_compartido_confirmado:
+    # salvo que YA se sepa que el transformador es compartido (CO0500001172, Dinovi
+    # 2026-09-25: semidirecta con trafo_uso="compartido" resuelto de la hoja MAESTRA se estaba
+    # reclasificando a Indirecta igual, porque esta regla solo miraba el checkbox MANUAL
+    # `trafo_compartido_confirmado` y nunca el trafo_uso que la acta/hoja maestra ya traían —
+    # ahora usa `trafo_uso` (que ya combina ambas fuentes, ver línea de arriba) en vez del
+    # checkbox crudo. Art.19 es solo para transformador de uso EXCLUSIVO; si ya sabemos que es
+    # compartido, no hay ambigüedad que "confirmar" a mano.
+    if (nt_cambio or norm_indirectas) and trafo_uso != "compartido":
         out.tipo_medida_final = "indirecta"
         out.uso_transformador = "exclusivo"
         out.nivel_tension = _nivel_tension_para_indirecta(out.nivel_tension, or_real)
@@ -114,11 +120,12 @@ def clasificar_tipo_medida(
             "(Art.19), transformador de uso exclusivo, sin importar lo que diga el acta o la hoja maestra."
         )
         return out
-    if (nt_cambio or norm_indirectas) and trafo_compartido_confirmado:
+    if nt_cambio or norm_indirectas:
         fuente = "Data cambio NT" if nt_cambio else "Normalizaciones_Indirectas"
+        origen_compartido = "confirmaste a mano" if trafo_compartido_confirmado else "ya indica el acta/hoja maestra"
         out.motivo = (
-            f'El CO está en "{fuente}", que normalmente forzaría Indirecta + exclusivo — pero se '
-            "confirmó a mano que el transformador es COMPARTIDO, así que Art.19 no aplica; se "
+            f'El CO está en "{fuente}", que normalmente forzaría Indirecta + exclusivo — pero el '
+            f"transformador es COMPARTIDO ({origen_compartido}), así que Art.19 no aplica; se "
             f"evalúa como cualquier otro CO compartido a partir de aquí. Revisa por qué esa hoja "
             "trae este CO si de verdad es compartido (puede ser un error de esa hoja)."
         )
