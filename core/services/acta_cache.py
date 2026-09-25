@@ -54,7 +54,11 @@ class ActaCache:
         fila_valores = [url, json.dumps(spec, ensure_ascii=False), str(int(time.time()))]
         fila_idx = self._fila_de(hoja, url)
         if fila_idx is None:
-            hoja.append_row(fila_valores)
+            # Rango explícito, no append_row: sin rango, Sheets "busca una tabla" para decidir
+            # en qué columna insertar, y esa búsqueda puede desviarse (ver el mismo bug real
+            # encontrado y corregido en lote_store.crear_lote, Dinovi 2026-09-24).
+            fila_nueva = len(hoja.get_all_values()) + 1
+            hoja.update(f"A{fila_nueva}:C{fila_nueva}", [fila_valores])
         else:
             hoja.update(f"A{fila_idx}:C{fila_idx}", [fila_valores])
 

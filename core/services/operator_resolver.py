@@ -17,6 +17,7 @@ from core.data_sources.metabase_client import MetabaseClient
 from core.data_sources.sheets_client import SheetsClient
 from core.prompts.acta_extraction_prompt import TIPOS_ACTA_ALCANCE
 from core.services import acta_downloader, or_extractor
+from core.services.acta_cache import get_acta_cache
 from core.utils import normalizar_codigo
 
 FUENTE_HOJA_ORIGEN = "hoja_origen"
@@ -58,14 +59,29 @@ def _acta_pdf_mas_reciente(metabase: MetabaseClient, co: str) -> str | None:
     return max(filas, key=lambda f: f.get("fecha_visita") or "")["act_pdf_url"]
 
 
-def _or_desde_acta_pdf(metabase: MetabaseClient, llm: AnthropicClient, co: str) -> str | None:
+def _or_desde_acta_pdf(sheets: SheetsClient, metabase: MetabaseClient, llm: AnthropicClient, co: str) -> str | None:
     url = _acta_pdf_mas_reciente(metabase, co)
     if not url:
         return None
+
+    # Mismo caché de acta_cache.py (por act_pdf_url, indefinido, solo éxitos) — antes esto
+    # mandaba el PDF completo a Claude en CADA resolución de operador, incluso si ya se había
+    # extraído el OR de esa misma acta antes (reanalizar el mismo CO, o el mismo CO repetido
+    # entre la pestaña individual y un lote). Namespace "or::" para no chocar con el caché de
+    # los 14 campos de CAPEX, que usa la URL desnuda como clave.
+    cache = get_acta_cache(sheets)
+    clave_cache = f"or::{url}"
+    cacheado = cache.obtener(clave_cache)
+    if cacheado is not None:
+        return cacheado.get("or")
+
     descarga = acta_downloader.descargar_pdf_acta(url)
     if not descarga.ok:
         return None
-    return or_extractor.extraer_or_desde_pdf(descarga.bytes_pdf, llm)
+    or_valor = or_extractor.extraer_or_desde_pdf(descarga.bytes_pdf, llm)
+    if or_valor:
+        cache.guardar(clave_cache, {"or": or_valor})
+    return or_valor
 
 
 def resolver_operador_red(
@@ -79,7 +95,7 @@ def resolver_operador_red(
 
     if metabase and llm:
         try:
-            or_acta = _or_desde_acta_pdf(metabase, llm, co)
+            or_acta = _or_desde_acta_pdf(sheets, metabase, llm, co)
             if or_acta:
                 return ResultadoOperador(co=co, or_raw=or_acta, fuente=FUENTE_ACTA_PDF)
         except Exception as e:  # noqa: BLE001 — un fallo de Metabase/LLM acá no debe tumbar la resolución, cae a manual
