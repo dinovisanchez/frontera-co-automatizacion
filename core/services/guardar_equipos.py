@@ -3,12 +3,14 @@ guardarAlcanceProvisional (Codigo.gs). Primero rellena los "huecos" que ya exist
 CO (filas con cliente/OR/maniobra pero SKU vacío, ej. de un intento anterior); lo que sobre se
 inserta justo debajo de la última fila de este CO (o al final de la hoja si no tenía ninguna).
 
-La hoja real tiene 9 columnas, no 7: H/I son fórmulas de costo (VLOOKUP contra ref_capex) que
-dependen del SKU de esa misma fila — confirmado por Dinovi, 2026-09-22 (antes de este fix, esas
-2 columnas quedaban en blanco porque solo se escribían A:G). Por eso cada fila nueva se inserta
-COPIANDO primero la fila de referencia completa (como el copyTo() del original, que arrastra
-las fórmulas con sus referencias ajustadas a la fila nueva) y recién después se sobrescribe
-A:G con los valores reales — nunca al revés, o se perdería la fórmula.
+La hoja real tiene 10 columnas, no 7: D es "Propiedad De Activos" (columna agregada por
+Dinovi, 2026-09-28 — fórmula XLOOKUP contra otra hoja, NUNCA se escribe un valor literal ahí,
+igual que I/J que son fórmulas de costo VLOOKUP/XLOOKUP contra ref_capex) — confirmado por
+Dinovi, 2026-09-22 para I/J (antes de ESE fix, esas 2 columnas quedaban en blanco porque solo
+se escribían A:G). Por eso cada fila nueva se inserta COPIANDO primero la fila de referencia
+completa (como el copyTo() del original, que arrastra las fórmulas con sus referencias
+ajustadas a la fila nueva) y recién después se sobrescriben A:C y E:H con los valores reales
+(D se salta siempre) — nunca al revés, o se perderían las fórmulas.
 """
 
 from core.data_sources.sheets_client import SheetsClient
@@ -16,7 +18,15 @@ from core.services.hoja_origen_equipos import leer_equipos_existentes, leer_orig
 from core.utils import normalizar_codigo
 from config.settings import SHEET_EQUIPOS
 
-_NUM_COLUMNAS_EQUIPOS = 9  # A:I — A:G son datos, H:I son fórmulas de costo
+_NUM_COLUMNAS_EQUIPOS = 10  # A:J — A:C y E:H son datos, D es XLOOKUP ajeno, I:J son fórmulas de costo
+
+
+def _escribir_fila_equipos(hoja, fila: int, co: str, cliente: str, or_: str, maniobra: str, sku: str, cantidad, tipo: str, value_input_option: str) -> None:
+    """A:C y E:H — NUNCA D ("Propiedad De Activos", fórmula XLOOKUP ajena a este flujo, ver
+    docstring del módulo): dos escrituras en vez de una sola A:H para no pisarla con un
+    literal vacío."""
+    hoja.update(f"A{fila}:C{fila}", [[co, cliente, or_]], value_input_option=value_input_option)
+    hoja.update(f"E{fila}:H{fila}", [[maniobra, sku, cantidad, tipo]], value_input_option=value_input_option)
 
 
 def guardar_filas_equipos(sheets: SheetsClient, co_raw: str, filas: list[dict], maniobra_respaldo: str | None = None) -> dict:
@@ -52,17 +62,18 @@ def guardar_filas_equipos(sheets: SheetsClient, co_raw: str, filas: list[dict], 
     fila_base = max((f["fila"] for f in existentes), default=None) or len(hoja.col_values(1))
     guardadas = []
     for f in filas:
-        valores_fila = [co, origen["cliente"], origen["or"], maniobra, f["sku"], f.get("cantidad", 1), f.get("tipo", "")]
+        sku, cantidad, tipo = f["sku"], f.get("cantidad", 1), f.get("tipo", "")
+        valores_fila = [co, origen["cliente"], origen["or"], maniobra, sku, cantidad, tipo]
         if idx_hueco < len(huecos):
             fila_destino = huecos[idx_hueco]
             idx_hueco += 1
-            hoja.update(f"A{fila_destino}:G{fila_destino}", [valores_fila], value_input_option="USER_ENTERED")
+            _escribir_fila_equipos(hoja, fila_destino, co, origen["cliente"], origen["or"], maniobra, sku, cantidad, tipo, "USER_ENTERED")
         else:
             fila_nueva = fila_base + 1
             hoja.insert_rows([[""] * _NUM_COLUMNAS_EQUIPOS], row=fila_nueva, inherit_from_before=True)
             if fila_base >= 1:
                 sheets.copiar_fila(hoja, fila_origen=fila_base, fila_destino=fila_nueva, num_columnas=_NUM_COLUMNAS_EQUIPOS)
-            hoja.update(f"A{fila_nueva}:G{fila_nueva}", [valores_fila], value_input_option="USER_ENTERED")
+            _escribir_fila_equipos(hoja, fila_nueva, co, origen["cliente"], origen["or"], maniobra, sku, cantidad, tipo, "USER_ENTERED")
             fila_base = fila_nueva
         guardadas.append(valores_fila)
 
