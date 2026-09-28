@@ -155,15 +155,6 @@ def analizar_alcance_provisional(sheets, llm, co_raw: str, dictamen: dict, acta_
         alertas.insert(0, '🔴 ATENCIÓN: esta reclasificación a Indirecta (Art.19) asume transformador de uso EXCLUSIVO tomado de la hoja MAESTRA — ninguna acta lo confirmó. Si el acta o Lovable dicen que el transformador es COMPARTIDO, esta reclasificación NO aplica (Art.19 es solo para exclusivo) y el alcance real es Normalización del esquema actual, no cambio de Nivel de Tensión. Verifica el acta antes de guardar.')
     if trafo_compartido_confirmado:
         alertas.insert(0, '✓ Marcaste el transformador como COMPARTIDO — no se aplicó la reclasificación a Indirecta por Art.19 aunque "Data cambio NT"/"Normalizaciones_Indirectas"/hoja maestra sugirieran lo contrario. El alcance se armó con el tipo de medida real del acta/Lovable.')
-    elif (nt_cambio_raw or norm_indirectas) and diagnostico.uso_transformador == "compartido":
-        # CO0500001172 (Dinovi, 2026-09-25): semidirecta con trafo_uso="compartido" YA
-        # conocido (acta u hoja maestra) se estaba reclasificando a Indirecta igual solo por
-        # estar en "Data cambio NT"/"Normalizaciones_Indirectas" — ahora clasificador_medida
-        # detecta el compartido automáticamente sin necesitar el checkbox manual; este aviso es
-        # el equivalente automático de la confirmación manual de arriba, para que quede visible
-        # por qué NO se aplicó Art.19 pese a que el CO está en esa hoja.
-        fuente = "Data cambio NT" if nt_cambio_raw else "Normalizaciones_Indirectas"
-        alertas.insert(0, f'✓ El transformador ya consta como COMPARTIDO (acta/hoja maestra) — no se aplicó la reclasificación a Indirecta por Art.19 aunque el CO esté en "{fuente}". Revisa por qué esa hoja trae este CO si de verdad es compartido (puede ser un error de esa hoja).')
     if acta_resultado and acta_resultado.get("capacidades_encontradas"):
         vals = " vs. ".join(f'{c["valor"]} kVA ({c["etiqueta"]})' for c in acta_resultado["capacidades_encontradas"])
         alertas.insert(0, f"⚠ Las actas de este CO no coinciden en la capacidad instalada del transformador: {vals} — confirma cuál es la correcta antes de usar el TC/TP propuesto.")

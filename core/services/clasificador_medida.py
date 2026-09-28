@@ -81,6 +81,16 @@ def clasificar_tipo_medida(
     OCR, ver CO0800000348, Dinovi 2026-09-23) o Lovable ya dejaron claro que es compartido y
     Art.19 no aplica. NO anula la Regla 9a (conexión YA en MT): eso es un hecho físico del
     punto de medición actual, no depende de si el transformador es compartido o no.
+
+    IMPORTANTE (Dinovi, 2026-09-28, CO0100001466): la Regla 9d-previa de abajo SOLO se salta con
+    este checkbox MANUAL — un `spec["trafo_uso"] == "compartido"` que ya venga de la hoja
+    maestra/acta NO basta por sí solo. Se probó lo contrario entre el 2026-09-25 y hoy (mirar
+    `trafo_uso` combinado en vez del checkbox crudo) y resultó incorrecto: CO0100001466 tiene
+    "compartido" en la hoja maestra Y está en "Data cambio NT" con TC/TP ya calculados por
+    ingeniería para MT — es un cambio de Nivel de Tensión real, y con el trafo_uso automático
+    se quedaba en Semidirecta (sin TP — Semidirecta genuinamente no lleva TP — y con mano de
+    obra de Semidirecta en vez de Indirecta). La sola presencia en estas hojas SÍ es el
+    dictamen, siempre, salvo que el usuario mismo confirme a mano que es un error de la hoja.
     """
     nivel_tension = spec.get("nivel_tension")
     trafo_uso = "compartido" if trafo_compartido_confirmado else spec.get("trafo_uso")
@@ -101,14 +111,10 @@ def clasificar_tipo_medida(
 
     # Regla 9d-previa (Codigo.gs 3661-3678): la sola presencia en "Data cambio NT" o
     # "Normalizaciones_Indirectas" YA es el dictamen — indirecta + exclusivo, sin condición...
-    # salvo que YA se sepa que el transformador es compartido (CO0500001172, Dinovi
-    # 2026-09-25: semidirecta con trafo_uso="compartido" resuelto de la hoja MAESTRA se estaba
-    # reclasificando a Indirecta igual, porque esta regla solo miraba el checkbox MANUAL
-    # `trafo_compartido_confirmado` y nunca el trafo_uso que la acta/hoja maestra ya traían —
-    # ahora usa `trafo_uso` (que ya combina ambas fuentes, ver línea de arriba) en vez del
-    # checkbox crudo. Art.19 es solo para transformador de uso EXCLUSIVO; si ya sabemos que es
-    # compartido, no hay ambigüedad que "confirmar" a mano.
-    if (nt_cambio or norm_indirectas) and trafo_uso != "compartido":
+    # salvo que el usuario mismo confirmó A MANO (checkbox) que es un error de esa hoja y en
+    # realidad es compartido. Ver el docstring de arriba (CO0100001466, Dinovi 2026-09-28) para
+    # por qué esto NO debe inferirse automáticamente de trafo_uso de la hoja maestra/acta.
+    if (nt_cambio or norm_indirectas) and not trafo_compartido_confirmado:
         out.tipo_medida_final = "indirecta"
         out.uso_transformador = "exclusivo"
         out.nivel_tension = _nivel_tension_para_indirecta(out.nivel_tension, or_real)
@@ -122,11 +128,10 @@ def clasificar_tipo_medida(
         return out
     if nt_cambio or norm_indirectas:
         fuente = "Data cambio NT" if nt_cambio else "Normalizaciones_Indirectas"
-        origen_compartido = "confirmaste a mano" if trafo_compartido_confirmado else "ya indica el acta/hoja maestra"
         out.motivo = (
-            f'El CO está en "{fuente}", que normalmente forzaría Indirecta + exclusivo — pero el '
-            f"transformador es COMPARTIDO ({origen_compartido}), así que Art.19 no aplica; se "
-            f"evalúa como cualquier otro CO compartido a partir de aquí. Revisa por qué esa hoja "
+            f'El CO está en "{fuente}", que normalmente forzaría Indirecta + exclusivo — pero '
+            "confirmaste a mano que el transformador es COMPARTIDO, así que Art.19 no aplica; se "
+            "evalúa como cualquier otro CO compartido a partir de aquí. Revisa por qué esa hoja "
             "trae este CO si de verdad es compartido (puede ser un error de esa hoja)."
         )
         # sigue evaluando las reglas normales de abajo con trafo_uso="compartido"
