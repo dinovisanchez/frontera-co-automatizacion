@@ -152,7 +152,13 @@ def analizar_alcance_provisional(sheets, llm, co_raw: str, dictamen: dict, acta_
         # INFR pesaba 42MB y nunca se pudo leer), pero la acta/Lovable SÍ decían "compartido" —
         # Art.19 no aplica a un transformador compartido. No hay forma de saber cuál es
         # correcto sin leer la acta real, así que se avisa en vez de decidir en silencio.
-        alertas.insert(0, '🔴 ATENCIÓN: esta reclasificación a Indirecta (Art.19) asume transformador de uso EXCLUSIVO tomado de la hoja MAESTRA — ninguna acta lo confirmó. Si el acta o Lovable dicen que el transformador es COMPARTIDO, esta reclasificación NO aplica (Art.19 es solo para exclusivo) y el alcance real es Normalización del esquema actual, no cambio de Nivel de Tensión. Verifica el acta antes de guardar.')
+        #
+        # CO0800000676 (Dinovi, 2026-09-28): "no me das la opcion de decirte que es
+        # compartido" — la opción SÍ existe (el checkbox "El transformador es COMPARTIDO" del
+        # dictamen, verificado que ya funciona para este caso exacto), pero esta alerta nunca
+        # la mencionaba: solo decía "verifica el acta", sin decir CÓMO corregir el análisis si
+        # Lovable ya confirma compartido. Ahora la alerta apunta directo al checkbox.
+        alertas.insert(0, '🔴 ATENCIÓN: esta reclasificación a Indirecta (Art.19) asume transformador de uso EXCLUSIVO tomado de la hoja MAESTRA — ninguna acta lo confirmó. Si el acta o Lovable dicen que el transformador es COMPARTIDO, esta reclasificación NO aplica (Art.19 es solo para exclusivo): marca la casilla "El transformador es COMPARTIDO" de arriba y vuelve a darle "Analizar" — el alcance real sería Normalización del esquema actual, no cambio de Nivel de Tensión.')
     if trafo_compartido_confirmado:
         alertas.insert(0, '✓ Marcaste el transformador como COMPARTIDO — no se aplicó la reclasificación a Indirecta por Art.19 aunque "Data cambio NT"/"Normalizaciones_Indirectas"/hoja maestra sugirieran lo contrario. El alcance se armó con el tipo de medida real del acta/Lovable.')
     if acta_resultado and acta_resultado.get("capacidades_encontradas"):
