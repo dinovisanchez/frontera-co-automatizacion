@@ -59,7 +59,14 @@ def descargar_pdf_acta(url: str) -> ResultadoDescarga:
         return ResultadoDescarga(ok=False, motivo_fallo=f"es .{extension}, no se puede descomprimir (solo .zip soportado)")
 
     try:
-        resp = requests.get(url, timeout=120)
+        # TODO el backend corre bajo maxDuration=60s de Vercel — un timeout de 120s acá
+        # (Dinovi, 2026-09-28: CO0200000687 se quedó reintentando "para siempre" en Comparación
+        # Masiva) permitía que UNA SOLA descarga colgada ya superara el límite de Vercel, que
+        # mata el proceso a la fuerza sin que este except la alcance a capturar — el frontend
+        # reintenta y choca con lo mismo, sin avanzar nunca. 25s deja margen real para el resto
+        # del paso (OCR + LLM + Sheets) dentro de los 60s, y si de verdad tarda más que eso el
+        # CDN del acta tiene un problema real que vale la pena reportar, no seguir esperando.
+        resp = requests.get(url, timeout=25)
     except requests.RequestException as e:
         return ResultadoDescarga(ok=False, motivo_fallo=str(e))
 

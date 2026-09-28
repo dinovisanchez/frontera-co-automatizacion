@@ -17,9 +17,17 @@ from config.settings import AnthropicConfig
 
 ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
-MAX_REINTENTOS = 3
+MAX_REINTENTOS = 2
 BACKOFF_BASE_SEG = 2.0
-TIMEOUT_SEG = 120
+# TODO el backend corre bajo maxDuration=60s de Vercel (vercel.json) — un TIMEOUT_SEG de 120s
+# por intento (Dinovi, 2026-09-28: CO0200000687 se quedó reintentando "para siempre" en
+# Comparación Masiva) permitía que UN SOLO intento colgado ya superara el límite del propio
+# Vercel, que entonces mata el proceso a la fuerza SIN que este código alcance a capturar la
+# excepción ni a registrar nada — el siguiente reintento del frontend choca con lo mismo,
+# ciclo infinito con cero avance. 25s por intento x máx. 2 intentos (con el backoff de abajo)
+# ≈ 52s en el peor caso, deja margen real dentro de los 60s para el resto del paso (descarga,
+# OCR, escritura a Sheets) y para que la excepción SÍ se capture y quede en observaciones.
+TIMEOUT_SEG = 25
 
 
 class AnthropicAuthError(RuntimeError):

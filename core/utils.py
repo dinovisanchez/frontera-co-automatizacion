@@ -21,7 +21,15 @@ def quitar_acentos(s: str | None) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", str(s)) if not unicodedata.combining(c))
 
 
-def normText(s: str | None) -> str:
+def normText(s) -> str:
     """Puerto de normText (Codigo.gs línea 1708-1710): minúsculas, sin acentos, con un espacio
-    de relleno a cada lado — usado para matches por substring de palabra completa."""
-    return " " + quitar_acentos((s or "").lower()) + " "
+    de relleno a cada lado — usado para matches por substring de palabra completa.
+
+    `str(s)` primero, no `(s or "").lower()`: un valor NUMÉRICO de una hoja (ej. "tc_relacion"
+    en "Normalizaciones_Indirectas" a veces viene como int, no texto — CO0800000725, Dinovi
+    2026-09-28) es truthy, así que `s or ""` lo deja intacto y `.lower()` sobre un int revienta
+    ("'int' object has no attribute 'lower'"). Mismo patrón de robustez que ya usa
+    quitar_acentos()."""
+    if s is None:
+        return "  "
+    return " " + quitar_acentos(str(s).lower()) + " "

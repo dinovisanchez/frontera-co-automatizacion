@@ -19,7 +19,7 @@ import time
 import uuid
 from dataclasses import dataclass
 
-from core.data_sources.sheets_client import SheetsClient, con_reintento_sheets
+from core.data_sources.sheets_client import SheetsClient, con_reintento_sheets, es_cuota_sheets_excedida
 from core.services import alcance_combiner
 from core.services.alcance_provisional import analizar_alcance_provisional
 from core.services.comparador_alcance import comparar_propuesta_vs_hoja
@@ -210,9 +210,17 @@ class LoteStore:
                 f.estado = ESTADO_COMPLETO
                 procesados += 1
         except Exception as e:  # noqa: BLE001 — un CO con error no debe tumbar el resto del lote
-            f.estado = ESTADO_ERROR
-            f.job.observaciones.append(f"Error procesando este CO: {e}")
-            procesados += 1
+            if es_cuota_sheets_excedida(e):
+                # 429 transitorio de Sheets (Dinovi, 2026-09-28: CO0500000755 quedó marcado
+                # como error permanente por esto) — NO es un error real de este CO, es una
+                # ráfaga sostenida que ya agotó los reintentos de con_reintento_sheets. Se deja
+                # el estado como estaba (con el progreso ya hecho, si alguno) para que el
+                # PRÓXIMO paso del lote lo vuelva a intentar, en vez de darlo por perdido.
+                f.job.observaciones.append(f"Cuota de Sheets agotada momentáneamente, se reintentará en el próximo paso: {e}")
+            else:
+                f.estado = ESTADO_ERROR
+                f.job.observaciones.append(f"Error procesando este CO: {e}")
+                procesados += 1
 
         con_reintento_sheets(hoja.update, f"A{fila_idx}:{chr(ord('A') + len(_COLUMNAS) - 1)}{fila_idx}", [self._fila_valores(f)])
         return {

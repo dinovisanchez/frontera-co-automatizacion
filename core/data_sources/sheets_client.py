@@ -31,6 +31,14 @@ def _es_429(e: gspread.exceptions.APIError) -> bool:
     return getattr(e, "code", None) == 429 or (e.response is not None and e.response.status_code == 429)
 
 
+def es_cuota_sheets_excedida(e: Exception) -> bool:
+    """Para que un llamador (ej. lote_store.siguiente_paso) distinga un 429 de Sheets — que ya
+    sobrevivió los reintentos de con_reintento_sheets y sigue fallando por una ráfaga sostenida
+    — de un error real del CO: el primero se debe reintentar en un paso futuro, no marcar el
+    CO como error permanente (Dinovi, 2026-09-28)."""
+    return isinstance(e, gspread.exceptions.APIError) and _es_429(e)
+
+
 def con_reintento_sheets(fn: Callable[..., _T], *args, **kwargs) -> _T:
     """Google Sheets tiene cuota de "lecturas/minuto por usuario" — un lote de cientos de CO
     (Comparación Masiva) puede agotarla en ráfaga (Dinovi, 2026-09-25: HTTP 500 real en
