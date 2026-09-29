@@ -137,6 +137,7 @@
   <div class="tabs">
     <button type="button" class="tab-btn active" id="tabBtnAlcance">Alcance Quinquenal</button>
     <button type="button" class="tab-btn" id="tabBtnLote">Comparación Masiva</button>
+    <button type="button" class="tab-btn" id="tabBtnOpexEquipos">OPEX desde Equipos</button>
   </div>
 
   <div id="panelAlcance">
@@ -179,6 +180,24 @@
     </div>
 
     <div id="resultadosLote"></div>
+  </div>
+
+  <div id="panelOpexEquipos" style="display:none;">
+    <h1>OPEX desde Equipos</h1>
+    <p class="subtitle">Para CO's que ya tienen su alcance de equipos guardado en la hoja "Equipos" (con este sistema o antes) pero cuya mano de obra nunca se calculó o quedó incompleta. Se lee "Equipos", se propone la mano de obra a partir de lo ya asignado, y decides qué maniobras aceptar antes de guardar en "OPEX" — no vuelve a leer actas ni a llamar a Claude.</p>
+
+    <div class="card">
+      <div class="card-title">OPEX desde Equipos</div>
+      <div class="toolbar">
+        <button id="btnCargarEquipos">Cargar CO's desde Equipos</button>
+      </div>
+      <div class="spinner" id="spinnerCargarEquipos">Cargando…</div>
+      <label for="filtroCoEquipos" style="margin-top:10px;">Filtrar por CO</label>
+      <input id="filtroCoEquipos" placeholder="ej. CO0800000191" />
+      <div id="resumenEquipos" style="margin-top:8px;font-size:13px;color:var(--text-sub);"></div>
+    </div>
+
+    <div id="resultadosOpexEquipos"></div>
   </div>
 
   <script>
@@ -1193,16 +1212,144 @@
       });
     });
 
-    // ---------- Pestañas: Alcance Quinquenal / Comparación Masiva ----------
+    // ---------- OPEX desde Equipos: backfill de mano de obra para CO's ya guardados ----------
+    var TIPOS_MEDIDA_OPCIONES = ['directa', 'semidirecta', 'indirecta'];
+    var cosEquiposCargados = [];
+
+    function renderTarjetaOpexEquipos(r) {
+      var id = 'opexEq_' + r.co;
+      var html = '<div class="card" id="' + id + '">';
+      html += '<div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">';
+      html += '<span>' + escapeHtml(r.co) + (r.cliente ? ' — ' + escapeHtml(r.cliente) : '') + '</span>';
+      html += r.filasOpexExistentes
+        ? '<span style="font-size:11.5px;color:var(--text-sub);padding:2px 8px;border-radius:4px;background:var(--bg-input);">Ya tiene ' + r.filasOpexExistentes + ' fila(s) en OPEX</span>'
+        : '<span style="font-size:11.5px;color:var(--amber);padding:2px 8px;border-radius:4px;background:var(--bg-input);">Sin OPEX todavía</span>';
+      html += '</div>';
+
+      html += '<div class="subsection"><h3>Asignado en Equipos (' + r.filas.length + ')</h3>';
+      if (r.filas.length) {
+        r.filas.forEach(function (f) {
+          html += '<div class="item">' + escapeHtml(f.sku || '(fila con SKU vacío)') + (f.tipo ? ' — ' + escapeHtml(f.tipo) : '') + (f.cantidad ? ' × ' + escapeHtml(f.cantidad) : '') + '</div>';
+        });
+      } else {
+        html += '<div class="item">Sin filas.</div>';
+      }
+      html += '</div>';
+
+      html += '<div class="subsection">';
+      if (!r.tipoMedidaFinalInferido) {
+        html += '<label>Tipo de medida (no se pudo inferir del SKU del medidor)</label>';
+        html += '<select id="' + id + '_tipoMedida"><option value="">(elegir)</option>';
+        TIPOS_MEDIDA_OPCIONES.forEach(function (t) { html += '<option value="' + t + '">' + t + '</option>'; });
+        html += '</select>';
+      } else {
+        html += '<div class="req-note" style="margin:0 0 8px;padding:0;border:none;">Tipo de medida detectado: <b>' + escapeHtml(r.tipoMedidaFinalInferido) + '</b></div>';
+      }
+
+      html += '<label class="checkbox-line" style="margin-top:10px;"><input type="checkbox" id="' + id + '_instalacionNueva" /> Es instalación nueva (no hay equipo previo que retirar)</label>';
+
+      html += '<label style="margin-top:10px;">Ubicación de la medida' + (r.ubicacionInferida ? ' (detectada: ' + escapeHtml(r.ubicacionInferida) + ')' : ' (no se pudo determinar automáticamente)') + '</label>';
+      html += '<select id="' + id + '_ubicacion">' +
+        '<option value=""' + (r.ubicacionInferida ? '' : ' selected') + '>(sin determinar)</option>' +
+        '<option value="interior"' + (r.ubicacionInferida === 'interior' ? ' selected' : '') + '>Interior</option>' +
+        '<option value="exterior"' + (r.ubicacionInferida === 'exterior' ? ' selected' : '') + '>Exterior</option>' +
+        '</select>';
+
+      if (r.maniobra === 'Cambio NT') {
+        html += '<label style="margin-top:10px;">Tipo de medida ANTES del cambio (esta fila es "Cambio NT")</label>';
+        html += '<select id="' + id + '_tipoMedidaActual"><option value="">(sin determinar)</option>';
+        TIPOS_MEDIDA_OPCIONES.forEach(function (t) { html += '<option value="' + t + '">' + t + '</option>'; });
+        html += '</select>';
+      }
+
+      html += '<label style="margin-top:10px;">OR manual (opcional, deja vacío para usar el de Equipos: ' + escapeHtml(r.or || '?') + ')</label>';
+      html += '<input id="' + id + '_orManual" placeholder="' + escapeHtml(r.or || 'ej. EPM ANTIOQUIA') + '" />';
+
+      html += '<button id="' + id + '_btnCalcular" style="margin-top:10px;">Calcular mano de obra</button>';
+      html += '<div class="spinner" id="' + id + '_spinner">Calculando…</div>';
+      html += '<div id="' + id + '_resultado" style="margin-top:10px;"></div>';
+      html += '</div></div>';
+      return html;
+    }
+
+    function cablearTarjetaOpexEquipos(r) {
+      var id = 'opexEq_' + r.co;
+      document.getElementById(id + '_btnCalcular').addEventListener('click', function () {
+        var tipoMedidaFinal = r.tipoMedidaFinalInferido || document.getElementById(id + '_tipoMedida').value;
+        if (!tipoMedidaFinal) { alert('Elige el tipo de medida — no se pudo inferir del SKU del medidor.'); return; }
+
+        var elTipoActual = document.getElementById(id + '_tipoMedidaActual');
+        var orManual = document.getElementById(id + '_orManual').value.trim();
+        var body = {
+          co: r.co,
+          tipo_medida_final: tipoMedidaFinal,
+          tipo_medida_actual: elTipoActual ? (elTipoActual.value || null) : null,
+          ubicacion: document.getElementById(id + '_ubicacion').value || null,
+          secciones: r.secciones,
+          es_instalacion_nueva: document.getElementById(id + '_instalacionNueva').checked,
+          filas_cable: r.filasCable,
+          celda_sku: r.celdaSku
+        };
+        if (orManual) body.or_manual = orManual;
+
+        setRunning(id + '_btnCalcular', id + '_spinner', true);
+        var destino = document.getElementById(id + '_resultado');
+        destino.innerHTML = '';
+        fetchJSON('POST', '/api/opex_resolver', body).then(function (opex) {
+          setRunning(id + '_btnCalcular', id + '_spinner', false);
+          pintarTablaOpex(opex, destino);
+        }).catch(function (err) {
+          setRunning(id + '_btnCalcular', id + '_spinner', false);
+          destino.innerHTML = renderError(err);
+        });
+      });
+    }
+
+    document.getElementById('btnCargarEquipos').addEventListener('click', function () {
+      setRunning('btnCargarEquipos', 'spinnerCargarEquipos', true);
+      var resumen = document.getElementById('resumenEquipos');
+      resumen.textContent = '';
+      document.getElementById('resultadosOpexEquipos').innerHTML = '';
+
+      fetchJSON('GET', '/api/equipos_resumen').then(function (r) {
+        setRunning('btnCargarEquipos', 'spinnerCargarEquipos', false);
+        // Sin OPEX primero — son los que de verdad hace falta revisar.
+        cosEquiposCargados = (r.cos || []).slice().sort(function (a, b) {
+          return (a.filasOpexExistentes ? 1 : 0) - (b.filasOpexExistentes ? 1 : 0);
+        });
+        resumen.textContent = cosEquiposCargados.length + ' CO encontrados en "Equipos".';
+        pintarListaOpexEquipos(cosEquiposCargados);
+      }).catch(function (err) {
+        setRunning('btnCargarEquipos', 'spinnerCargarEquipos', false);
+        document.getElementById('resultadosOpexEquipos').innerHTML = renderError(err);
+      });
+    });
+
+    function pintarListaOpexEquipos(lista) {
+      var destino = document.getElementById('resultadosOpexEquipos');
+      destino.innerHTML = lista.map(renderTarjetaOpexEquipos).join('');
+      lista.forEach(cablearTarjetaOpexEquipos);
+    }
+
+    document.getElementById('filtroCoEquipos').addEventListener('input', function () {
+      var filtro = normalizar_codigo_js(this.value);
+      var filtrados = filtro ? cosEquiposCargados.filter(function (r) { return r.co.indexOf(filtro) !== -1; }) : cosEquiposCargados;
+      pintarListaOpexEquipos(filtrados);
+    });
+    function normalizar_codigo_js(s) { return (s || '').replace(/\s+/g, '').toUpperCase(); }
+
+    // ---------- Pestañas: Alcance Quinquenal / Comparación Masiva / OPEX desde Equipos ----------
+    var PANELES_TAB = { alcance: 'panelAlcance', lote: 'panelLote', opexEquipos: 'panelOpexEquipos' };
+    var BOTONES_TAB = { alcance: 'tabBtnAlcance', lote: 'tabBtnLote', opexEquipos: 'tabBtnOpexEquipos' };
     function activarTab(nombre) {
-      var esAlcance = nombre === 'alcance';
-      document.getElementById('panelAlcance').style.display = esAlcance ? '' : 'none';
-      document.getElementById('panelLote').style.display = esAlcance ? 'none' : '';
-      document.getElementById('tabBtnAlcance').classList.toggle('active', esAlcance);
-      document.getElementById('tabBtnLote').classList.toggle('active', !esAlcance);
+      Object.keys(PANELES_TAB).forEach(function (n) {
+        document.getElementById(PANELES_TAB[n]).style.display = (n === nombre) ? '' : 'none';
+        document.getElementById(BOTONES_TAB[n]).classList.toggle('active', n === nombre);
+      });
     }
     document.getElementById('tabBtnAlcance').addEventListener('click', function () { activarTab('alcance'); });
     document.getElementById('tabBtnLote').addEventListener('click', function () { activarTab('lote'); });
+    document.getElementById('tabBtnOpexEquipos').addEventListener('click', function () { activarTab('opexEquipos'); });
   </script>
 </body>
 </html>
