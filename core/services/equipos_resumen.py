@@ -74,6 +74,12 @@ def _inferir_tipo_medida(filas: list[dict]) -> str | None:
         tipos = parsear_medidor(f["sku"])["tipos_medida"]
         if len(tipos) == 1:
             return tipos[0]
+    # Sin medidor en la fila (común en "Cambio NT": solo se agrega TC/TP/celda de MT, el
+    # medidor existente se reutiliza) — TP es SIEMPRE exclusivo de indirecta (nunca existe en
+    # directa/semidirecta, mismo hecho de negocio usado en clasificador_medida.py), así que su
+    # sola presencia ya basta para inferir el tipo de medida sin necesidad del SKU del medidor.
+    if any(_categoria_de_tipo(f.get("tipo")) == "tp" for f in filas):
+        return "indirecta"
     return None
 
 
