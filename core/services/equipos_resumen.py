@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from core.data_sources.sheets_client import SheetsClient, con_reintento_sheets
 from core.services.catalogo_capex import parsear_medidor, parsear_tc, parsear_tp
 from core.utils import normalizar_codigo
-from config.settings import SHEET_EQUIPOS, SHEET_OPEX
+from config.settings import FILA_INICIO_HOJA_ORIGEN, SHEET_EQUIPOS, SHEET_OPEX
 
 # Mismas categorías/palabras clave que ETIQUETAS_EQUIPO_ALCANCE en el frontend (index.html) —
 # el valor real guardado en la columna "Tipo" de Equipos es la forma larga ("Transformador de
@@ -98,13 +98,17 @@ def listar_cos_en_equipos(sheets: SheetsClient) -> list[CoEnEquipos]:
     hoja = sheets.hoja_por_nombre(SHEET_EQUIPOS)
     ultima_fila = hoja.row_count
     conteo_opex = _contar_opex_por_co(sheets)
-    if ultima_fila < 1:
+    if ultima_fila < FILA_INICIO_HOJA_ORIGEN:
         return []
 
-    datos = sheets.leer_rango(hoja, 1, 1, ultima_fila, 8)
+    # "Equipos" y "Data" son el mismo tab físico (ver hoja_origen_equipos.py) — el bloque de
+    # encabezado real ocupa varias filas (título + nombres de columna), no solo la fila 1, por
+    # eso leer_origen_alcance() ya arranca en FILA_INICIO_HOJA_ORIGEN (4) en vez de 1. Sin este
+    # ajuste, una fila de encabezado ("CO"/"Maniobra" literal) se cuela como un CO fantasma.
+    datos = sheets.leer_rango(hoja, FILA_INICIO_HOJA_ORIGEN, 1, ultima_fila - FILA_INICIO_HOJA_ORIGEN + 1, 8)
     por_co: dict[str, CoEnEquipos] = {}
     orden: list[str] = []
-    for f in datos[1:]:  # fila 1 es encabezado ("co", "Cliente", ...) — nunca un CO real
+    for f in datos:
         co = normalizar_codigo(f[0] if len(f) > 0 else "")
         if not co:
             continue
