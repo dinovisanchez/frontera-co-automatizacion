@@ -7,6 +7,7 @@ muy por debajo de cualquier maxDuration razonable de Vercel.
 
 from flask import Blueprint, jsonify, request
 
+from core.data_sources.llm_client import AnthropicRateLimitError
 from core.services import alcance_combiner
 from core.services.job_store import ESTADO_COMPLETO
 from core.services.wiring import construir_dependencias
@@ -32,7 +33,14 @@ def actas_step():
 
     try:
         resultado = alcance_combiner.procesar_siguiente_acta(estado, deps.llm, deps.drive_cfg, deps.sheets)
-    except Exception as e:  # noqa: BLE001 — se guarda el error en el job en vez de perder el progreso ya combinado
+    except AnthropicRateLimitError as e:
+        # Pasajero (503/429 de Claude tras agotar reintentos) — NO marcar_error: eso sacaría el
+        # job de ESTADO_EN_PROGRESO y lo dejaría huérfano para siempre (cron_reintentos.py solo
+        # reintenta en_progreso). Ver mismo comentario en actas_start.py, Dinovi 2026-09-29.
+        estado.observaciones.append(str(e))
+        deps.jobs.guardar_progreso(estado)
+        return jsonify({"error": str(e), "spec_combinado": estado.spec_combinado}), 503
+    except Exception as e:  # noqa: BLE001 — error real: sí se guarda como error del job
         deps.jobs.marcar_error(estado, str(e))
         return jsonify({"error": str(e), "spec_combinado": estado.spec_combinado}), 500
 

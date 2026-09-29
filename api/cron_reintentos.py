@@ -7,6 +7,7 @@ job pendiente en cada tick del cron, para que eventualmente todos terminen solos
 
 from flask import Blueprint, jsonify
 
+from core.data_sources.llm_client import AnthropicRateLimitError
 from core.services import alcance_combiner
 from core.services.job_store import ESTADO_EN_PROGRESO
 from core.services.wiring import construir_dependencias
@@ -28,7 +29,14 @@ def cron_reintentos():
             continue
         try:
             resultado = alcance_combiner.procesar_siguiente_acta(estado, deps.llm, deps.drive_cfg, deps.sheets)
-        except Exception as e:  # noqa: BLE001 — un job con error no debe tumbar el resto del tick
+        except AnthropicRateLimitError as e:
+            # Pasajero — se deja en_progreso para el próximo tick del cron (o el próximo
+            # actas_step del frontend), NO marcar_error. Ver actas_start.py, Dinovi 2026-09-29.
+            estado.observaciones.append(str(e))
+            deps.jobs.guardar_progreso(estado)
+            avanzados.append({"co": co, "reintentara": str(e)})
+            continue
+        except Exception as e:  # noqa: BLE001 — un job con error real no debe tumbar el resto del tick
             deps.jobs.marcar_error(estado, str(e))
             avanzados.append({"co": co, "error": str(e)})
             continue

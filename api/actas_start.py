@@ -8,6 +8,7 @@ Vercel solo hace un paso. El frontend sigue llamando /api/actas_step hasta que
 
 from flask import Blueprint, jsonify, request
 
+from core.data_sources.llm_client import AnthropicRateLimitError
 from core.services import alcance_combiner
 from core.services.wiring import construir_dependencias
 from core.utils import normalizar_codigo
@@ -39,10 +40,21 @@ def actas_start():
     estado = deps.jobs.crear_o_reiniciar(co, actas_pendientes, tiene_acta_instalacion)
     try:
         resultado = alcance_combiner.procesar_siguiente_acta(estado, deps.llm, deps.drive_cfg, deps.sheets)
-    except Exception as e:  # noqa: BLE001 — mismo patrón que actas_step.py: sin esto, un 503 de
-        # Claude (Dinovi, 2026-09-29: real en producción durante ~25 min) tumbaba este endpoint
-        # con el error genérico de Flask en vez de un JSON claro, Y el job recién creado nunca
-        # quedaba marcado como error (cron_reintentos.py no lo encontraría para reintentarlo).
+    except AnthropicRateLimitError as e:
+        # Un 503/429 de Claude que sobrevivió los reintentos de llm_client.py es pasajero, no un
+        # error real del CO (Dinovi, 2026-09-29: incidente real de Anthropic de ~35 min, "Claude
+        # respondió HTTP 503" en casi cada llamada) — si lo marcáramos ESTADO_ERROR, el job queda
+        # huérfano para siempre: cron_reintentos.py SOLO reintenta jobs en ESTADO_EN_PROGRESO, y
+        # cada reintento manual del usuario volvía a chocar con lo mismo y a re-marcarlo error
+        # (se veían 3-4 "Claude respondió HTTP 503" acumulados en observaciones del mismo job).
+        # Dejamos el estado tal cual (en_progreso) para que el próximo /api/actas_step — del
+        # frontend o del cron diario — reintente esta misma acta sin perder lo ya combinado.
+        estado.observaciones.append(str(e))
+        deps.jobs.guardar_progreso(estado)
+        return jsonify({"error": str(e), "spec_combinado": estado.spec_combinado}), 503
+    except Exception as e:  # noqa: BLE001 — mismo patrón que actas_step.py: sin esto, un error
+        # real (no transitorio) tumbaba este endpoint con el error genérico de Flask en vez de
+        # un JSON claro, Y el job recién creado nunca quedaba marcado como error.
         deps.jobs.marcar_error(estado, str(e))
         return jsonify({"error": str(e), "spec_combinado": estado.spec_combinado}), 500
 
