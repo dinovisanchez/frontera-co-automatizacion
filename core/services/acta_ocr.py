@@ -14,6 +14,8 @@ import io
 import json
 from dataclasses import dataclass
 
+import google_auth_httplib2
+import httplib2
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
@@ -22,6 +24,14 @@ from config.settings import DRIVE_OCR_UNIDAD_COMPARTIDA_ID, GoogleSheetsConfig
 
 _SCOPES_DRIVE = ["https://www.googleapis.com/auth/drive"]
 _MIN_CARACTERES_UTILES = 200  # igual que el original: menos que esto = "escaneo de mala calidad"
+# El transporte httplib2 de build(..., credentials=...) NO tiene timeout por defecto — cada
+# llamada (create/next_chunk/delete) puede colgarse indefinidamente. Dinovi, 2026-09-29: esto
+# es lo que de verdad estaba tumbando actas_start/actas_step con "Vercel Runtime Timeout Error:
+# Task timed out after 60 seconds" (SIN ninguna excepción capturada ni observación guardada,
+# la función simplemente moría a la fuerza) — la descarga del PDF y el LLM ya tenían timeout
+# propio, pero el OCR de Drive era el único paso del pipeline sin ninguno. 30s deja margen
+# real dentro del maxDuration de 60s para el resto del paso (descarga ya hecha, LLM, Sheets).
+_TIMEOUT_HTTP_DRIVE_SEG = 30
 
 
 @dataclass
@@ -34,7 +44,8 @@ class OcrResultado:
 def _cliente_drive(cfg: GoogleSheetsConfig):
     info = json.loads(cfg.service_account_json)
     creds = Credentials.from_service_account_info(info, scopes=_SCOPES_DRIVE)
-    return build("drive", "v3", credentials=creds)
+    http = google_auth_httplib2.AuthorizedHttp(creds, http=httplib2.Http(timeout=_TIMEOUT_HTTP_DRIVE_SEG))
+    return build("drive", "v3", http=http)
 
 
 def ocr_texto_desde_bytes(pdf_bytes: bytes, cfg: GoogleSheetsConfig) -> OcrResultado:
