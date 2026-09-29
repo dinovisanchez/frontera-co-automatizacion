@@ -72,9 +72,22 @@ def _rank_nivel_medida(tipo: str | None) -> int:
 
 def clasificar_tipo_medida(
     spec: dict, nt_cambio: NtCambio | None, norm_indirectas: bool, or_real: str | None,
-    trafo_compartido_confirmado: bool = False,
+    trafo_compartido_confirmado: bool = False, decision_nivel_tension: str | None = None,
 ) -> ClasificacionMedida:
-    """`trafo_compartido_confirmado`: el usuario confirmó a mano (checkbox del dictamen) que el
+    """`decision_nivel_tension`: el usuario dice DIRECTAMENTE (control del dictamen, no una
+    corrección de un dato de entrada como `trafo_compartido_confirmado`) si este CO "seguro"
+    pasa a Indirecta por cambio de Nivel de Tensión o se queda en Normalización — sin importar
+    cuál regla aplicaría. Pedido explícito de Dinovi, 2026-09-29 ("aun no me das la opcion en
+    cada tarjeta para poder decir si seguro pasa a nt o se queda como normalizacion"): las
+    correcciones puntuales (compartido/checkbox) solo tapan UN insumo a la vez y dependen de
+    que el motor deduzca bien el resto — esto es la salida directa cuando el usuario ya conoce
+    la respuesta (por Lovable/el acta) y no quiere depender de ninguna regla. Tiene prioridad
+    sobre TODO lo de abajo, incluida la Regla 9a (a diferencia de `trafo_compartido_confirmado`,
+    que respeta la Regla 9a por ser un hecho físico) — si el usuario dice "seguro no cambia",
+    es una afirmación de hecho, no una hipótesis a contrastar con más reglas.
+    Valores: "indirecta" | "normalizacion" | None (dejar que el motor decida, default).
+
+    `trafo_compartido_confirmado`: el usuario confirmó a mano (checkbox del dictamen) que el
     transformador es COMPARTIDO — anula tanto el "exclusivo" que asumen "Data cambio NT"/
     "Normalizaciones_Indirectas" sin condición (Regla 9d-previa) como cualquier trafo_uso de la
     hoja maestra, para los casos en que el acta real (a veces ilegible/demasiado grande para
@@ -108,6 +121,21 @@ def clasificar_tipo_medida(
         elementos=spec.get("elementos_medida") if isinstance(spec.get("elementos_medida"), int) else None,
         fases_medidor=spec.get("fases_medidor") if isinstance(spec.get("fases_medidor"), int) else None,
     )
+
+    # Decisión manual directa — se salta TODAS las reglas de abajo (ver docstring de
+    # `decision_nivel_tension`).
+    if decision_nivel_tension == "indirecta":
+        out.tipo_medida_final = "indirecta"
+        out.uso_transformador = "exclusivo" if trafo_uso != "compartido" else "compartido"
+        out.nivel_tension = _nivel_tension_para_indirecta(out.nivel_tension, or_real)
+        out.reclasificado = tipo_actual != "indirecta"
+        out.motivo = 'Confirmaste a mano que este CO SÍ cambia a Indirecta (Nivel de Tensión) — se aplicó directo, sin evaluar ninguna regla automática de CREG 038/2014.'
+        return out
+    if decision_nivel_tension == "normalizacion":
+        out.tipo_medida_final = tipo_actual
+        out.reclasificado = False
+        out.motivo = 'Confirmaste a mano que este CO se queda en Normalización (no cambia de Nivel de Tensión) — se aplicó directo, sin evaluar ninguna regla automática de CREG 038/2014.'
+        return out
 
     # Regla 9d-previa (Codigo.gs 3661-3678): la sola presencia en "Data cambio NT" o
     # "Normalizaciones_Indirectas" YA es el dictamen — indirecta + exclusivo, sin condición...

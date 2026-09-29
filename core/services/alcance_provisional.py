@@ -109,7 +109,8 @@ def analizar_alcance_provisional(sheets, llm, co_raw: str, dictamen: dict, acta_
             relacion_certificada_tp = extraer_ratio_de_certificado_calibracion(tp_actual["certificado_calibracion_url"], llm)
 
     trafo_compartido_confirmado = bool(dictamen.get("trafoCompartidoConfirmado"))
-    diagnostico = clasificar_tipo_medida(spec, nt_cambio, bool(norm_indirectas), origen["or"], trafo_compartido_confirmado)
+    decision_nivel_tension = dictamen.get("decisionNivelTension") or None
+    diagnostico = clasificar_tipo_medida(spec, nt_cambio, bool(norm_indirectas), origen["or"], trafo_compartido_confirmado, decision_nivel_tension)
     if trafo_compartido_confirmado:
         spec["trafo_uso"] = "compartido"
     diagnostico_dict = {
@@ -146,7 +147,7 @@ def analizar_alcance_provisional(sheets, llm, co_raw: str, dictamen: dict, acta_
         alertas.insert(0, f'⚠ Ninguna acta indicó interior/exterior — se asumió "{spec["ubicacion_medida"]}" por ser OR {origen["or"]}. Confirma que sea correcto (excepción: centros comerciales suelen ser interior).')
     if ubicacion_sobrescrita_por_nt:
         alertas.insert(0, f'⚠ El acta indicaba ubicación "{ubicacion_previa_acta}", pero "Data cambio NT" ya trae el TC/TP calculado como "{spec["ubicacion_medida"]}" para el esquema MT nuevo de este CO reclasificado — se usó el de "Data cambio NT" (más confiable para el punto de medición nuevo que un acta que puede describir el esquema viejo o ser de otra visita). Confirma que sea correcto.')
-    if trafo_uso_desde_maestro and diagnostico.reclasificado and diagnostico.uso_transformador == "exclusivo":
+    if trafo_uso_desde_maestro and diagnostico.reclasificado and diagnostico.uso_transformador == "exclusivo" and not decision_nivel_tension:
         # CO0800000348 (Dinovi, 2026-09-23): reclasificó a Indirecta con trafo_uso="exclusivo"
         # tomado de la hoja maestra (ninguna acta lo confirmó — en este caso porque la acta
         # INFR pesaba 42MB y nunca se pudo leer), pero la acta/Lovable SÍ decían "compartido" —
@@ -158,8 +159,14 @@ def analizar_alcance_provisional(sheets, llm, co_raw: str, dictamen: dict, acta_
         # dictamen, verificado que ya funciona para este caso exacto), pero esta alerta nunca
         # la mencionaba: solo decía "verifica el acta", sin decir CÓMO corregir el análisis si
         # Lovable ya confirma compartido. Ahora la alerta apunta directo al checkbox.
-        alertas.insert(0, '🔴 ATENCIÓN: esta reclasificación a Indirecta (Art.19) asume transformador de uso EXCLUSIVO tomado de la hoja MAESTRA — ninguna acta lo confirmó. Si el acta o Lovable dicen que el transformador es COMPARTIDO, esta reclasificación NO aplica (Art.19 es solo para exclusivo): marca la casilla "El transformador es COMPARTIDO" de arriba y vuelve a darle "Analizar" — el alcance real sería Normalización del esquema actual, no cambio de Nivel de Tensión.')
-    if trafo_compartido_confirmado:
+        # `not decision_nivel_tension`: si el usuario ya decidió directo (ver más abajo), esta
+        # alerta ya no aplica — decirle "verifica" algo que él mismo ya confirmó es ruido.
+        alertas.insert(0, '🔴 ATENCIÓN: esta reclasificación a Indirecta (Art.19) asume transformador de uso EXCLUSIVO tomado de la hoja MAESTRA — ninguna acta lo confirmó. Si el acta o Lovable dicen que el transformador es COMPARTIDO, esta reclasificación NO aplica (Art.19 es solo para exclusivo): marca la casilla "El transformador es COMPARTIDO" de arriba y vuelve a darle "Analizar" — el alcance real sería Normalización del esquema actual, no cambio de Nivel de Tensión. También puedes usar el selector "¿Cambia de Nivel de Tensión?" de arriba si ya sabes la respuesta directamente.')
+    if decision_nivel_tension == "indirecta":
+        alertas.insert(0, '✓ Marcaste directamente que este CO SÍ cambia a Indirecta (Nivel de Tensión) — se aplicó sin evaluar ninguna regla automática.')
+    elif decision_nivel_tension == "normalizacion":
+        alertas.insert(0, '✓ Marcaste directamente que este CO se queda en Normalización (no cambia de Nivel de Tensión) — se aplicó sin evaluar ninguna regla automática.')
+    elif trafo_compartido_confirmado:
         alertas.insert(0, '✓ Marcaste el transformador como COMPARTIDO — no se aplicó la reclasificación a Indirecta por Art.19 aunque "Data cambio NT"/"Normalizaciones_Indirectas"/hoja maestra sugirieran lo contrario. El alcance se armó con el tipo de medida real del acta/Lovable.')
     if acta_resultado and acta_resultado.get("capacidades_encontradas"):
         vals = " vs. ".join(f'{c["valor"]} kVA ({c["etiqueta"]})' for c in acta_resultado["capacidades_encontradas"])

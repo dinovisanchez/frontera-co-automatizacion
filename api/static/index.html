@@ -333,6 +333,13 @@
       html += '<label class="checkbox-line"><input type="checkbox" id="' + id + '_capacidadIncierta" /> La capacidad del transformador (automática) NO es correcta</label>';
       html += '<label class="checkbox-line"><input type="checkbox" id="' + id + '_sinActas" /> No leer actas para este CO — usar solo hoja maestra + hojas de normalización + equipos actuales</label>';
       html += '<label class="checkbox-line"><input type="checkbox" id="' + id + '_trafoCompartido" /> El transformador es COMPARTIDO (confirmado en acta/Lovable) — NO aplicar reclasificación a Indirecta por Art.19</label>';
+      html += '<label style="margin-top:10px;">¿Este CO cambia de Nivel de Tensión (pasa a Indirecta por Art.19)?</label>';
+      html += '<select id="' + id + '_decisionNT">' +
+        '<option value="">Detectar automáticamente (recomendado)</option>' +
+        '<option value="indirecta">Sí, seguro pasa a Indirecta (NT)</option>' +
+        '<option value="normalizacion">No, seguro se queda en Normalización (nivel actual — Directa o Semidirecta)</option>' +
+        '</select>';
+      html += '<div class="req-note" style="margin:2px 0 0;padding:0;border:none;">Úsalo cuando ya sabes la respuesta por Lovable/el acta y no quieres depender de ninguna regla automática — tiene prioridad sobre todo lo demás, incluido el checkbox de arriba.</div>';
       html += '<div class="req-note" style="margin:10px 0 0;padding:8px 10px;border:1px dashed var(--border);border-radius:var(--radius-sm);">' +
         '<div style="margin-bottom:4px;">Si sabes que alguna sección está incompleta y el detector automático no la marque, fuérzala aquí:</div>';
       SECCIONES_ALCANCE.forEach(function (s) {
@@ -395,6 +402,7 @@
           dictamen.capacidadIncierta = document.getElementById(id + '_capacidadIncierta').checked;
           dictamen.sinActas = document.getElementById(id + '_sinActas').checked;
           dictamen.trafoCompartidoConfirmado = document.getElementById(id + '_trafoCompartido').checked;
+          dictamen.decisionNivelTension = document.getElementById(id + '_decisionNT').value || null;
           dictamen.seccionesForzadas = {};
           SECCIONES_ALCANCE.forEach(function (s) {
             dictamen.seccionesForzadas[s.key] = document.getElementById(id + '_forzar_' + s.key).checked;
