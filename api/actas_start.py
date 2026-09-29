@@ -37,7 +37,15 @@ def actas_start():
 
     tiene_acta_instalacion = alcance_combiner.hay_acta_instalacion(filas_metabase_co)
     estado = deps.jobs.crear_o_reiniciar(co, actas_pendientes, tiene_acta_instalacion)
-    resultado = alcance_combiner.procesar_siguiente_acta(estado, deps.llm, deps.drive_cfg, deps.sheets)
+    try:
+        resultado = alcance_combiner.procesar_siguiente_acta(estado, deps.llm, deps.drive_cfg, deps.sheets)
+    except Exception as e:  # noqa: BLE001 — mismo patrón que actas_step.py: sin esto, un 503 de
+        # Claude (Dinovi, 2026-09-29: real en producción durante ~25 min) tumbaba este endpoint
+        # con el error genérico de Flask en vez de un JSON claro, Y el job recién creado nunca
+        # quedaba marcado como error (cron_reintentos.py no lo encontraría para reintentarlo).
+        deps.jobs.marcar_error(estado, str(e))
+        return jsonify({"error": str(e), "spec_combinado": estado.spec_combinado}), 500
+
     if resultado.completo:
         deps.jobs.marcar_completo(resultado.estado)
     else:

@@ -43,5 +43,11 @@ def analizar_alcance():
             return jsonify({"error": f'El análisis de actas de "{co}" todavía no terminó (estado: {estado.estado}) — sigue llamando a /api/actas_step hasta completo:true.'}), 409
         acta_resultado = acta_resultado_desde_estado(estado)
 
-    resultado = analizar_alcance_provisional(deps.sheets, deps.llm, co, dictamen, acta_resultado, filas_metabase_co)
+    try:
+        resultado = analizar_alcance_provisional(deps.sheets, deps.llm, co, dictamen, acta_resultado, filas_metabase_co)
+    except Exception as e:  # noqa: BLE001 — sin esto, un 503 de Claude (ej. certificado/OR) o
+        # cualquier otro fallo acá tumbaba el endpoint entero con el error genérico de Flask en
+        # vez de un JSON claro (Dinovi, 2026-09-29: mismo hueco real ya encontrado y corregido
+        # en actas_start.py) — el frontend no puede mostrar un mensaje útil ni reintentar bien.
+        return jsonify({"error": str(e)}), 500
     return jsonify(resultado)
