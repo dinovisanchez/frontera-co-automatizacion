@@ -15,12 +15,21 @@ CAPEX para lo mismo. es_instalacion_nueva y tipo_medida_actual no tienen ninguna
 persistida — se piden en la tarjeta del frontend, esto solo entrega lo que SÍ se puede inferir.
 """
 
+import re
 from dataclasses import dataclass, field
 
 from core.data_sources.sheets_client import SheetsClient, con_reintento_sheets
 from core.services.catalogo_capex import parsear_medidor, parsear_tc, parsear_tp
 from core.utils import normalizar_codigo
 from config.settings import FILA_INICIO_HOJA_ORIGEN, SHEET_EQUIPOS, SHEET_OPEX
+
+# Confirmado en producción (Dinovi, 2026-09-29): además del bloque de encabezado del inicio
+# (ver FILA_INICIO_HOJA_ORIGEN), "Equipos" tiene al menos una fila de encabezado repetida más
+# abajo en la hoja (columna A literal "CO", columna E literal "Maniobra") — probablemente
+# pegada a mano como separador visual en algún momento. leer_equipos_existentes() nunca la nota
+# porque busca un CO puntual (nunca es igual a "CO"), pero acá SÍ colaba como un CO fantasma.
+# Validar el formato en vez de solo "no vacío" filtra esto sin importar dónde aparezca.
+_PATRON_CO_VALIDO = re.compile(r"^CO\d+$")
 
 # Mismas categorías/palabras clave que ETIQUETAS_EQUIPO_ALCANCE en el frontend (index.html) —
 # el valor real guardado en la columna "Tipo" de Equipos es la forma larga ("Transformador de
@@ -89,7 +98,7 @@ def _contar_opex_por_co(sheets: SheetsClient) -> dict[str, int]:
     conteo: dict[str, int] = {}
     for valor in columna_co[1:]:
         co = normalizar_codigo(valor)
-        if co:
+        if _PATRON_CO_VALIDO.match(co):
             conteo[co] = conteo.get(co, 0) + 1
     return conteo
 
@@ -110,7 +119,7 @@ def listar_cos_en_equipos(sheets: SheetsClient) -> list[CoEnEquipos]:
     orden: list[str] = []
     for f in datos:
         co = normalizar_codigo(f[0] if len(f) > 0 else "")
-        if not co:
+        if not _PATRON_CO_VALIDO.match(co):
             continue
         if co not in por_co:
             por_co[co] = CoEnEquipos(
