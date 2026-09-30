@@ -73,6 +73,15 @@ la suma al total de la vista previa. Como esa celda deja de ser fórmula, la fil
 se crea copiando la anterior) la heredaría: por eso al guardar se restaura la fórmula de H en toda
 fila que no lleve el valor.
 
+**Descargo (columna I de la hoja "OPEX")** — Dinovi, 2026-09-30: si el alcance del CO trae montaje
+de TCs o TPs, **interior o exterior**, la columna I lleva un valor fijo: **$8.000.000** para todos
+los operadores (OR) salvo **ENEL, que lleva $12.000.000** (`DESCARGO_MONTAJE_TC_TP` y
+`DESCARGO_MONTAJE_TC_TP_ENEL` en `config/settings.py`). Igual que el carro canasta, va **una sola
+vez por CO**, en la primera maniobra de montaje, y no aplica a desmontes ni a las instalaciones que
+solo nombran "Montaje TCs/TPs" para aclarar que no lo incluyen. La regla vive en
+`core/services/descargo.py` (comparte el detector de montaje con `carro_canasta.py`). Si el OR no
+se puede normalizar a una de las 8 columnas del tarifario, cuenta como "no ENEL" ($8.000.000).
+
 ⚠️ También se corrigió que `sheets_client.py` pedía los valores "tal como se ven" (ej.
 `"$118,750.00"`) en vez del número crudo — eso habría hecho que CADA precio quedara en 0 al
 intentar convertir ese texto a `float`. `leer_todo`/`leer_rango` ahora aceptan

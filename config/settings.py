@@ -79,6 +79,12 @@ SHEET_OPEX = "OPEX"
 # de TCs/TPs en exterior (Dinovi, 2026-09-30) — se escribe UNA sola vez por CO, no por maniobra.
 CARRO_CANASTA_MONTAJE_EXTERIOR = 4_500_000
 
+# Columna I ("Descargo") de la hoja OPEX: valor FIJO por CO cuando el alcance trae montaje de
+# TCs/TPs, interior O exterior (Dinovi, 2026-09-30). ENEL tiene su propio valor; el resto de los
+# operadores (OR) comparten el mismo.
+DESCARGO_MONTAJE_TC_TP = 8_000_000
+DESCARGO_MONTAJE_TC_TP_ENEL = 12_000_000
+
 # Hoja de "origen" (cliente/OR/maniobra por CO) — la misma que Dinovi confirmó como la hoja
 # "Data": en Codigo.gs se referencia por GID, no por nombre (ALCANCE_GID_ORIGEN = 1682501029,
 # ALCANCE_FILA_INICIO_ORIGEN = 4). Se preserva igual acá: sheets_client debe resolver la

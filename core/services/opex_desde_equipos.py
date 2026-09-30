@@ -19,7 +19,8 @@ from dataclasses import dataclass, field
 from config.settings import CARRO_CANASTA_MONTAJE_EXTERIOR
 from core.data_sources.sheets_client import SheetsClient
 from core.services import tarifa_calculator as tc
-from core.services.carro_canasta import es_montaje_tc_tp_exterior, indice_fila_carro_canasta
+from core.services.carro_canasta import es_montaje_tc_tp, es_montaje_tc_tp_exterior, indice_fila_carro_canasta
+from core.services.descargo import indice_fila_descargo, valor_descargo
 
 
 @dataclass
@@ -43,6 +44,7 @@ class ResultadoOpexDesdeEquipos:
     # nombre EXACTO a mano (única forma de que la fila agregada traiga costo real).
     maniobras_disponibles: list[str] = field(default_factory=list)
     valor_carro_canasta: int = CARRO_CANASTA_MONTAJE_EXTERIOR
+    valor_descargo: int = 0  # depende del operador (ENEL distinto) — se calcula al construir el resultado
     nota: str = (
         'Este CO no está en "Consolidado" — estas maniobras se derivaron del tipo de medida '
         "final y la ubicación que ya calculó CAPEX. Celda y cable no tienen maniobra propia en "
@@ -263,23 +265,29 @@ def construir_opex_desde_equipos(
         else:
             alertas.append(f'No encontré en el tarifario ninguna maniobra para "{texto_cable}" (cable no tiene línea propia en esta hoja) — agrégala a mano.')
 
-    # Carro canasta: valor fijo, UNA sola vez por CO, en la primera maniobra de montaje exterior
-    # de TCs/TPs. El resto de la hoja (descargo/acompañamiento) la calcula la hoja sola.
-    idx_carro = indice_fila_carro_canasta([m.nombre for m in r.resueltas])
+    # Carro canasta (montaje exterior de TCs/TPs) y descargo (montaje de TCs/TPs, interior o
+    # exterior): valores fijos, cada uno UNA sola vez por CO, en la primera maniobra que aplique.
+    # El acompañamiento lo calcula la hoja sola.
+    nombres_resueltos = [m.nombre for m in r.resueltas]
+    idx_carro = indice_fila_carro_canasta(nombres_resueltos)
+    idx_descargo = indice_fila_descargo(nombres_resueltos)
+    monto_descargo = valor_descargo(operador)
 
     filas_salida = []
     for i, m in enumerate(r.resueltas):
         precio_unitario = tarifario["precios"].get(m.nombre, {}).get(operador, 0.0)
         costo_total_mo = precio_unitario * m.cantidad
         carro_canasta = CARRO_CANASTA_MONTAJE_EXTERIOR if i == idx_carro else 0
+        descargo = monto_descargo if i == idx_descargo else 0
         filas_salida.append({
             "maniobra": m.nombre, "origen": m.origen, "operador": operador, "cantidad": m.cantidad,
             "costoUnitarioMO": precio_unitario, "costoTotalMO": costo_total_mo,
-            "carroCanasta": carro_canasta, "descargo": 0, "acompanamiento": 0,
-            "costoTotalConExtras": costo_total_mo + carro_canasta,
-            # Para que el frontend pueda mover el carro canasta a otra fila de montaje exterior
-            # si el usuario excluye la que lo trae (sigue siendo UNA sola por CO).
+            "carroCanasta": carro_canasta, "descargo": descargo, "acompanamiento": 0,
+            "costoTotalConExtras": costo_total_mo + carro_canasta + descargo,
+            # Para que el frontend pueda mover el carro canasta / el descargo a otra fila de montaje
+            # si el usuario excluye la que lo trae (sigue siendo UNA sola por CO en cada caso).
             "carroCanastaAplicable": es_montaje_tc_tp_exterior(m.nombre),
+            "descargoAplicable": es_montaje_tc_tp(m.nombre),
         })
 
     total_general = sum(f["costoTotalConExtras"] for f in filas_salida)
@@ -287,6 +295,6 @@ def construir_opex_desde_equipos(
 
     return ResultadoOpexDesdeEquipos(
         co=co, operador=operador, or_original=or_raw, opcion_cumplimiento=opcion,
-        filas=filas_salida, total_general=total_general, alertas=alertas,
+        filas=filas_salida, total_general=total_general, alertas=alertas, valor_descargo=monto_descargo,
         maniobras_disponibles=sorted(tarifario["maniobras"]),
     )
