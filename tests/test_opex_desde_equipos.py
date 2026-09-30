@@ -111,6 +111,89 @@ def test_directa_no_agrega_nada_de_tc_tp(monkeypatch):
     assert nombres == {"Instalación medida directa exterior (medidor + módem + toma 110V si aplica)"}
 
 
+def _carro_canasta_por_maniobra(resultado):
+    return {f["maniobra"]: f["carroCanasta"] for f in resultado.filas if f["carroCanasta"]}
+
+
+def test_carro_canasta_una_sola_vez_por_co_aunque_haya_montaje_de_tc_y_de_tp_exterior(monkeypatch):
+    monkeypatch.setattr(tc, "obtener_ref_tarifario_cacheado", lambda sheets: _tarifario_falso())
+
+    resultado = oe.construir_opex_desde_equipos(
+        sheets=None, co="CO0100002908", or_raw="AFINIA",
+        tipo_medida_final="indirecta", ubicacion="exterior",
+        secciones={"medidor": True, "tc": True, "tp": True, "bloque_pruebas": True},
+        es_instalacion_nueva=True,
+    )
+
+    # Solo la PRIMERA maniobra de montaje exterior (TCs) lleva el valor — la de TPs no, y tampoco
+    # "Instalación indirecta exterior … (sin Montaje TCs/TPs MT)", que solo menciona esas palabras.
+    assert _carro_canasta_por_maniobra(resultado) == {"Montaje  TCs MT (1–3) – exterior": 4_500_000}
+    assert resultado.valor_carro_canasta == 4_500_000
+
+    por_nombre = {f["maniobra"]: f for f in resultado.filas}
+    montaje_tcs = por_nombre["Montaje  TCs MT (1–3) – exterior"]
+    assert montaje_tcs["costoTotalConExtras"] == montaje_tcs["costoTotalMO"] + 4_500_000
+    aplicables = {n for n, f in por_nombre.items() if f["carroCanastaAplicable"]}
+    assert aplicables == {"Montaje  TCs MT (1–3) – exterior", "Montaje  TPs MT (1–3) – exterior"}
+    assert resultado.total_general == sum(f["costoTotalMO"] for f in resultado.filas) + 4_500_000
+
+
+def test_carro_canasta_solo_tp_exterior_lo_lleva_el_montaje_de_tps(monkeypatch):
+    monkeypatch.setattr(tc, "obtener_ref_tarifario_cacheado", lambda sheets: _tarifario_falso())
+
+    resultado = oe.construir_opex_desde_equipos(
+        sheets=None, co="CO0100002908", or_raw="AFINIA",
+        tipo_medida_final="indirecta", ubicacion="exterior",
+        secciones={"medidor": False, "tc": False, "tp": True, "bloque_pruebas": False},
+        es_instalacion_nueva=True,
+    )
+
+    assert _carro_canasta_por_maniobra(resultado) == {"Montaje  TPs MT (1–3) – exterior": 4_500_000}
+
+
+def test_sin_carro_canasta_en_interior(monkeypatch):
+    monkeypatch.setattr(tc, "obtener_ref_tarifario_cacheado", lambda sheets: _tarifario_falso())
+
+    resultado = oe.construir_opex_desde_equipos(
+        sheets=None, co="CO0100002908", or_raw="AFINIA",
+        tipo_medida_final="indirecta", ubicacion="interior",
+        secciones={"medidor": True, "tc": True, "tp": True, "bloque_pruebas": True},
+        es_instalacion_nueva=True,
+    )
+
+    assert _carro_canasta_por_maniobra(resultado) == {}
+    assert not any(f["carroCanastaAplicable"] for f in resultado.filas)
+
+
+def test_sin_carro_canasta_si_lo_unico_exterior_es_la_medida_directa(monkeypatch):
+    monkeypatch.setattr(tc, "obtener_ref_tarifario_cacheado", lambda sheets: _tarifario_falso())
+
+    resultado = oe.construir_opex_desde_equipos(
+        sheets=None, co="CO0100002908", or_raw="AFINIA",
+        tipo_medida_final="directa", ubicacion="exterior",
+        secciones={"medidor": True, "tc": False, "tp": False, "bloque_pruebas": False},
+        es_instalacion_nueva=True,
+    )
+
+    assert _carro_canasta_por_maniobra(resultado) == {}
+
+
+def test_carro_canasta_no_se_aplica_al_desmonte_exterior(monkeypatch):
+    """Cambio de equipo: el desmonte exterior NO cuenta — solo el montaje."""
+    monkeypatch.setattr(tc, "obtener_ref_tarifario_cacheado", lambda sheets: _tarifario_falso())
+
+    resultado = oe.construir_opex_desde_equipos(
+        sheets=None, co="CO0100002908", or_raw="AFINIA",
+        tipo_medida_final="indirecta", ubicacion="exterior",
+        secciones={"medidor": False, "tc": True, "tp": False, "bloque_pruebas": False},
+        es_instalacion_nueva=False, tipo_medida_actual="indirecta",
+    )
+
+    assert _carro_canasta_por_maniobra(resultado) == {"Montaje  TCs MT (1–3) – exterior": 4_500_000}
+    desmonte = next(f for f in resultado.filas if f["maniobra"].startswith("Desmonte"))
+    assert desmonte["carroCanasta"] == 0 and desmonte["carroCanastaAplicable"] is False
+
+
 def test_celda_sin_maniobra_queda_como_alerta(monkeypatch):
     monkeypatch.setattr(tc, "obtener_ref_tarifario_cacheado", lambda sheets: _tarifario_falso())
 

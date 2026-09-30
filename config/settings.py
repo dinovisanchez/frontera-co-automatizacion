@@ -75,6 +75,10 @@ SHEET_REF_CAPEX = "ref_capex"
 # código puntual.
 SHEET_OPEX = "OPEX"
 
+# Columna H ("Carro canasta") de la hoja OPEX: valor FIJO por CO cuando el alcance trae montaje
+# de TCs/TPs en exterior (Dinovi, 2026-09-30) — se escribe UNA sola vez por CO, no por maniobra.
+CARRO_CANASTA_MONTAJE_EXTERIOR = 4_500_000
+
 # Hoja de "origen" (cliente/OR/maniobra por CO) — la misma que Dinovi confirmó como la hoja
 # "Data": en Codigo.gs se referencia por GID, no por nombre (ALCANCE_GID_ORIGEN = 1682501029,
 # ALCANCE_FILA_INICIO_ORIGEN = 4). Se preserva igual acá: sheets_client debe resolver la
