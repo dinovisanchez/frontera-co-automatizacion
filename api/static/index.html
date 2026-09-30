@@ -1236,6 +1236,7 @@
     // ---------- OPEX desde Equipos: backfill de mano de obra para CO's ya guardados ----------
     var TIPOS_MEDIDA_OPCIONES = ['directa', 'semidirecta', 'indirecta'];
     var cosEquiposCargados = [];
+    var equiposYaCargados = false;
 
     function renderTarjetaOpexEquipos(r) {
       var id = 'opexEq_' + r.co;
@@ -1330,6 +1331,7 @@
       setRunning('btnCargarEquipos', 'spinnerCargarEquipos', true);
       var resumen = document.getElementById('resumenEquipos');
       resumen.textContent = '';
+      equiposYaCargados = false;
       document.getElementById('resultadosOpexEquipos').innerHTML = '';
 
       fetchJSON('GET', '/api/equipos_resumen').then(function (r) {
@@ -1338,8 +1340,8 @@
         cosEquiposCargados = (r.cos || []).slice().sort(function (a, b) {
           return (a.filasOpexExistentes ? 1 : 0) - (b.filasOpexExistentes ? 1 : 0);
         });
-        resumen.textContent = cosEquiposCargados.length + ' CO encontrados en "Equipos".';
-        pintarListaOpexEquipos(cosEquiposCargados);
+        equiposYaCargados = true;
+        aplicarFiltroOpexEquipos();  // respeta lo que ya escribiste en "Filtrar por CO"
       }).catch(function (err) {
         setRunning('btnCargarEquipos', 'spinnerCargarEquipos', false);
         document.getElementById('resultadosOpexEquipos').innerHTML = renderError(err);
@@ -1352,10 +1354,18 @@
       lista.forEach(cablearTarjetaOpexEquipos);
     }
 
-    document.getElementById('filtroCoEquipos').addEventListener('input', function () {
-      var filtro = normalizar_codigo_js(this.value);
+    /** Pinta solo los CO que coinciden con "Filtrar por CO" (todos si está vacío) y actualiza el contador. */
+    function aplicarFiltroOpexEquipos() {
+      var filtro = normalizar_codigo_js(document.getElementById('filtroCoEquipos').value);
       var filtrados = filtro ? cosEquiposCargados.filter(function (r) { return r.co.indexOf(filtro) !== -1; }) : cosEquiposCargados;
+      document.getElementById('resumenEquipos').textContent = filtro
+        ? filtrados.length + ' de ' + cosEquiposCargados.length + ' CO coinciden con "' + filtro + '".'
+        : cosEquiposCargados.length + ' CO encontrados en "Equipos".';
       pintarListaOpexEquipos(filtrados);
+    }
+
+    document.getElementById('filtroCoEquipos').addEventListener('input', function () {
+      if (equiposYaCargados) aplicarFiltroOpexEquipos();  // antes de cargar no hay nada que filtrar
     });
     function normalizar_codigo_js(s) { return (s || '').replace(/\s+/g, '').toUpperCase(); }
 
