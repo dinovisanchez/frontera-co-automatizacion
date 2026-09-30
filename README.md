@@ -62,6 +62,17 @@ interior" aparece en dos maniobras distintas: con bloque y sin bloque; solo la p
 como exclusión las distingue). Ver `tests/test_tarifa_calculator.py` y
 `tests/test_opex_desde_equipos.py` para los 24 casos verificados uno por uno contra la hoja real.
 
+**Carro canasta (columna H de la hoja "OPEX")** — Dinovi, 2026-09-30: si el alcance del CO trae
+montaje de TCs o TPs en **exterior** (maniobras "Montaje TCs/TPs MT … exterior"), la columna H
+lleva un valor fijo de **$4.500.000** (`CARRO_CANASTA_MONTAJE_EXTERIOR` en `config/settings.py`),
+**una sola vez por CO** — en la primera de esas maniobras, aunque haya TCs y TPs. No aplica a
+interior, a desmontes ni a la "Instalación indirecta exterior … (sin Montaje TCs/TPs MT)" (esa
+solo nombra esas palabras para aclarar que no las incluye). La regla vive en
+`core/services/carro_canasta.py`; `guardar_opex.py` la aplica al escribir y `opex_desde_equipos.py`
+la suma al total de la vista previa. Como esa celda deja de ser fórmula, la fila siguiente (que
+se crea copiando la anterior) la heredaría: por eso al guardar se restaura la fórmula de H en toda
+fila que no lleve el valor.
+
 ⚠️ También se corrigió que `sheets_client.py` pedía los valores "tal como se ven" (ej.
 `"$118,750.00"`) en vez del número crudo — eso habría hecho que CADA precio quedara en 0 al
 intentar convertir ese texto a `float`. `leer_todo`/`leer_rango` ahora aceptan

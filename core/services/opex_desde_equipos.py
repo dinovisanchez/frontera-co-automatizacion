@@ -16,8 +16,10 @@ Cada combinación de palabras clave de abajo fue verificada leyendo la hoja real
 
 from dataclasses import dataclass, field
 
+from config.settings import CARRO_CANASTA_MONTAJE_EXTERIOR
 from core.data_sources.sheets_client import SheetsClient
 from core.services import tarifa_calculator as tc
+from core.services.carro_canasta import es_montaje_tc_tp_exterior, indice_fila_carro_canasta
 
 
 @dataclass
@@ -40,6 +42,7 @@ class ResultadoOpexDesdeEquipos:
     # armar el desplegable de "agregar fila manual" en vez de exigir que el usuario teclee el
     # nombre EXACTO a mano (única forma de que la fila agregada traiga costo real).
     maniobras_disponibles: list[str] = field(default_factory=list)
+    valor_carro_canasta: int = CARRO_CANASTA_MONTAJE_EXTERIOR
     nota: str = (
         'Este CO no está en "Consolidado" — estas maniobras se derivaron del tipo de medida '
         "final y la ubicación que ya calculó CAPEX. Celda y cable no tienen maniobra propia en "
@@ -260,14 +263,23 @@ def construir_opex_desde_equipos(
         else:
             alertas.append(f'No encontré en el tarifario ninguna maniobra para "{texto_cable}" (cable no tiene línea propia en esta hoja) — agrégala a mano.')
 
+    # Carro canasta: valor fijo, UNA sola vez por CO, en la primera maniobra de montaje exterior
+    # de TCs/TPs. El resto de la hoja (descargo/acompañamiento) la calcula la hoja sola.
+    idx_carro = indice_fila_carro_canasta([m.nombre for m in r.resueltas])
+
     filas_salida = []
-    for m in r.resueltas:
+    for i, m in enumerate(r.resueltas):
         precio_unitario = tarifario["precios"].get(m.nombre, {}).get(operador, 0.0)
         costo_total_mo = precio_unitario * m.cantidad
+        carro_canasta = CARRO_CANASTA_MONTAJE_EXTERIOR if i == idx_carro else 0
         filas_salida.append({
             "maniobra": m.nombre, "origen": m.origen, "operador": operador, "cantidad": m.cantidad,
             "costoUnitarioMO": precio_unitario, "costoTotalMO": costo_total_mo,
-            "carroCanasta": 0, "descargo": 0, "acompanamiento": 0, "costoTotalConExtras": costo_total_mo,
+            "carroCanasta": carro_canasta, "descargo": 0, "acompanamiento": 0,
+            "costoTotalConExtras": costo_total_mo + carro_canasta,
+            # Para que el frontend pueda mover el carro canasta a otra fila de montaje exterior
+            # si el usuario excluye la que lo trae (sigue siendo UNA sola por CO).
+            "carroCanastaAplicable": es_montaje_tc_tp_exterior(m.nombre),
         })
 
     total_general = sum(f["costoTotalConExtras"] for f in filas_salida)

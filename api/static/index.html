@@ -866,10 +866,10 @@
             '<td style="padding:5px 6px;text-align:right;">' + f.cantidad + '</td>' +
             '<td style="padding:5px 6px;text-align:right;">' + formatoPesos(f.costoUnitarioMO) + '</td>' +
             '<td style="padding:5px 6px;text-align:right;">' + formatoPesos(f.costoTotalMO) + '</td>' +
-            '<td style="padding:5px 6px;text-align:right;">' + (f.carroCanasta ? formatoPesos(f.carroCanasta) : '—') + '</td>' +
+            '<td id="' + idTabla + '_carro' + i + '" style="padding:5px 6px;text-align:right;">' + (f.carroCanasta ? formatoPesos(f.carroCanasta) : '—') + '</td>' +
             '<td style="padding:5px 6px;text-align:right;">' + (f.descargo ? formatoPesos(f.descargo) : '—') + '</td>' +
             '<td style="padding:5px 6px;text-align:right;">' + (f.acompanamiento ? formatoPesos(f.acompanamiento) : '—') + '</td>' +
-            '<td style="padding:5px 6px;text-align:right;font-weight:600;">' + formatoPesos(f.costoTotalConExtras) + '</td>' +
+            '<td id="' + idTabla + '_totfila' + i + '" style="padding:5px 6px;text-align:right;font-weight:600;">' + formatoPesos(f.costoTotalConExtras) + '</td>' +
             '</tr>';
         });
         html += '</tbody></table></div>';
@@ -921,7 +921,24 @@
           return !chk || !chk.checked;
         });
       }
+      /** Carro canasta: UNA sola vez por CO, en la primera fila de montaje exterior que siga incluida
+       *  (si excluyes la que lo traía, pasa a la siguiente). El backend aplica la misma regla al guardar. */
+      function reasignarCarroCanasta() {
+        var valor = opex.valorCarroCanasta || 0, asignado = false;
+        opex.filas.forEach(function (f, i) {
+          var chk = document.getElementById(idTabla + '_excluir' + i);
+          var lleva = !asignado && f.carroCanastaAplicable && (!chk || !chk.checked);
+          if (lleva) asignado = true;
+          f.carroCanasta = lleva ? valor : 0;
+          f.costoTotalConExtras = (f.costoTotalMO || 0) + f.carroCanasta;
+          var celdaCarro = document.getElementById(idTabla + '_carro' + i);
+          if (celdaCarro) celdaCarro.textContent = f.carroCanasta ? formatoPesos(f.carroCanasta) : '—';
+          var celdaTotal = document.getElementById(idTabla + '_totfila' + i);
+          if (celdaTotal) celdaTotal.textContent = formatoPesos(f.costoTotalConExtras);
+        });
+      }
       function actualizarTotal() {
+        reasignarCarroCanasta();
         var total = filasIncluidas().reduce(function (s, f) { return s + (f.costoTotalConExtras || 0); }, 0);
         var totalEl = document.getElementById(idTabla + '_total');
         if (totalEl) totalEl.textContent = 'Total general: ' + formatoPesos(total);
@@ -930,6 +947,8 @@
         var chk = document.getElementById(idTabla + '_excluir' + i);
         if (chk) chk.addEventListener('change', actualizarTotal);
       });
+
+      actualizarTotal();  // deja carro canasta y total coherentes con las casillas (p. ej. tras agregar una fila manual)
 
       var selManiobraManual = document.getElementById(idSelManiobraManual);
       if (selManiobraManual) selManiobraManual.addEventListener('change', function () {
@@ -968,7 +987,9 @@
         destino.innerHTML = '';
         fetchJSON('POST', '/api/guardar_opex', { co: opex.co, operador: opex.operador, filas: filas }).then(function (r) {
           setRunning(idBtnGuardar, idSpinnerGuardar, false);
-          destino.innerHTML = '<div class="line ok">✓ Guardado (' + r.guardadas.length + ' fila(s)) — <a href="' + r.hoja_url + '" target="_blank">ver hoja OPEX</a></div>';
+          destino.innerHTML = '<div class="line ok">✓ Guardado (' + r.guardadas.length + ' fila(s))' +
+            (r.carroCanasta ? ' · Carro canasta ' + formatoPesos(r.carroCanasta.valor) + ' en la fila ' + r.carroCanasta.fila : '') +
+            ' — <a href="' + r.hoja_url + '" target="_blank">ver hoja OPEX</a></div>';
         }).catch(function (err) {
           setRunning(idBtnGuardar, idSpinnerGuardar, false);
           destino.innerHTML = renderError(err);

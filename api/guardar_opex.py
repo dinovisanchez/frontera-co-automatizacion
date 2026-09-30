@@ -4,6 +4,10 @@ sobre la tabla de referencia OR/Descargo/Acompañamiento que vive aparte, a la d
 
 Body: {"co": "CO0100002908", "operador": "EPM ANTIOQUIA", "filas": [{"maniobra": "...", "cantidad": 1}, ...]}
 El costo lo calcula la propia hoja (fórmulas) — no se manda ni se escribe.
+Única excepción: si alguna maniobra es "Montaje TCs/TPs MT … exterior", la columna H (Carro
+canasta) de la PRIMERA de ellas se escribe con un valor fijo (una sola vez por CO) — el backend
+lo decide a partir de las maniobras recibidas, el cliente no manda ese valor. La respuesta trae
+"carroCanasta": {"fila", "maniobra", "valor"} o null.
 """
 
 from flask import Blueprint, jsonify, request
@@ -35,4 +39,4 @@ def guardar_opex():
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 500
 
-    return jsonify({"guardadas": resultado["guardadas"], "hoja_url": resultado["hoja_url"]})
+    return jsonify({"guardadas": resultado["guardadas"], "hoja_url": resultado["hoja_url"], "carroCanasta": resultado["carro_canasta"]})
