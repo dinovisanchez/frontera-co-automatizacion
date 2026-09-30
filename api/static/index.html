@@ -877,7 +877,7 @@
             '<td style="padding:5px 6px;text-align:right;">' + formatoPesos(f.costoUnitarioMO) + '</td>' +
             '<td style="padding:5px 6px;text-align:right;">' + formatoPesos(f.costoTotalMO) + '</td>' +
             '<td id="' + idTabla + '_carro' + i + '" style="padding:5px 6px;text-align:right;">' + (f.carroCanasta ? formatoPesos(f.carroCanasta) : '—') + '</td>' +
-            '<td style="padding:5px 6px;text-align:right;">' + (f.descargo ? formatoPesos(f.descargo) : '—') + '</td>' +
+            '<td id="' + idTabla + '_desc' + i + '" style="padding:5px 6px;text-align:right;">' + (f.descargo ? formatoPesos(f.descargo) : '—') + '</td>' +
             '<td style="padding:5px 6px;text-align:right;">' + (f.acompanamiento ? formatoPesos(f.acompanamiento) : '—') + '</td>' +
             '<td id="' + idTabla + '_totfila' + i + '" style="padding:5px 6px;text-align:right;font-weight:600;">' + formatoPesos(f.costoTotalConExtras) + '</td>' +
             '</tr>';
@@ -931,24 +931,31 @@
           return !chk || !chk.checked;
         });
       }
-      /** Carro canasta: UNA sola vez por CO, en la primera fila de montaje exterior que siga incluida
-       *  (si excluyes la que lo traía, pasa a la siguiente). El backend aplica la misma regla al guardar. */
-      function reasignarCarroCanasta() {
-        var valor = opex.valorCarroCanasta || 0, asignado = false;
+      /** Carro canasta (montaje exterior de TCs/TPs) y descargo (montaje de TCs/TPs, interior o
+       *  exterior): cada uno UNA sola vez por CO, en la primera fila aplicable que siga incluida (si
+       *  excluyes la que lo traía, pasa a la siguiente). El backend aplica la misma regla al guardar. */
+      function reasignarExtrasUnaVezPorCo() {
+        var extras = [
+          { campo: 'carroCanasta', aplicable: 'carroCanastaAplicable', valor: opex.valorCarroCanasta || 0, celda: '_carro', asignado: false },
+          { campo: 'descargo', aplicable: 'descargoAplicable', valor: opex.valorDescargo || 0, celda: '_desc', asignado: false }
+        ];
         opex.filas.forEach(function (f, i) {
           var chk = document.getElementById(idTabla + '_excluir' + i);
-          var lleva = !asignado && f.carroCanastaAplicable && (!chk || !chk.checked);
-          if (lleva) asignado = true;
-          f.carroCanasta = lleva ? valor : 0;
-          f.costoTotalConExtras = (f.costoTotalMO || 0) + f.carroCanasta;
-          var celdaCarro = document.getElementById(idTabla + '_carro' + i);
-          if (celdaCarro) celdaCarro.textContent = f.carroCanasta ? formatoPesos(f.carroCanasta) : '—';
+          var incluida = !chk || !chk.checked;
+          extras.forEach(function (x) {
+            var lleva = !x.asignado && incluida && f[x.aplicable];
+            if (lleva) x.asignado = true;
+            f[x.campo] = lleva ? x.valor : 0;
+            var celda = document.getElementById(idTabla + x.celda + i);
+            if (celda) celda.textContent = f[x.campo] ? formatoPesos(f[x.campo]) : '—';
+          });
+          f.costoTotalConExtras = (f.costoTotalMO || 0) + (f.carroCanasta || 0) + (f.descargo || 0) + (f.acompanamiento || 0);
           var celdaTotal = document.getElementById(idTabla + '_totfila' + i);
           if (celdaTotal) celdaTotal.textContent = formatoPesos(f.costoTotalConExtras);
         });
       }
       function actualizarTotal() {
-        reasignarCarroCanasta();
+        reasignarExtrasUnaVezPorCo();
         var total = filasIncluidas().reduce(function (s, f) { return s + (f.costoTotalConExtras || 0); }, 0);
         var totalEl = document.getElementById(idTabla + '_total');
         if (totalEl) totalEl.textContent = 'Total general: ' + formatoPesos(total);
@@ -994,6 +1001,7 @@
         if (!d) return;
         d.innerHTML = '<div class="line ok">✓ Guardado (' + r.guardadas.length + ' fila(s))' +
           (r.carroCanasta ? ' · Carro canasta ' + formatoPesos(r.carroCanasta.valor) + ' en la fila ' + r.carroCanasta.fila : '') +
+          (r.descargo ? ' · Descargo ' + formatoPesos(r.descargo.valor) + ' en la fila ' + r.descargo.fila : '') +
           ' — <a href="' + r.hoja_url + '" target="_blank">ver hoja OPEX</a></div>';
       }
       destinoEl.__opexEstado = { opex: opex, filasIncluidas: filasIncluidas, marcarGuardado: mostrarGuardado };

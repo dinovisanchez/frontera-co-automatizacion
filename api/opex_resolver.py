@@ -82,4 +82,5 @@ def opex_resolver():
         "alertas": resultado.alertas,
         "maniobrasDisponibles": resultado.maniobras_disponibles,
         "valorCarroCanasta": resultado.valor_carro_canasta,
+        "valorDescargo": resultado.valor_descargo,
     })

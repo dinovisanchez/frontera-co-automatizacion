@@ -13,9 +13,14 @@ EMPEZAR por "montaje", no solo contener las palabras.
 from core.services.tarifa_calculator import normalizar_texto_opex
 
 
-def es_montaje_tc_tp_exterior(maniobra: str | None) -> bool:
+def es_montaje_tc_tp(maniobra: str | None) -> bool:
+    """"Montaje TCs/TPs MT" en cualquier ubicación (también lo usa el descargo, ver descargo.py)."""
     tokens = normalizar_texto_opex(maniobra).split(" ")
-    return tokens[0] == "montaje" and "exterior" in tokens and ("tcs" in tokens or "tps" in tokens)
+    return tokens[0] == "montaje" and ("tcs" in tokens or "tps" in tokens)
+
+
+def es_montaje_tc_tp_exterior(maniobra: str | None) -> bool:
+    return es_montaje_tc_tp(maniobra) and "exterior" in normalizar_texto_opex(maniobra).split(" ")
 
 
 def indice_fila_carro_canasta(maniobras: list[str | None]) -> int | None:
