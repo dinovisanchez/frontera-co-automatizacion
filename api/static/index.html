@@ -192,9 +192,19 @@
         <button id="btnCargarEquipos">Cargar CO's desde Equipos</button>
       </div>
       <div class="spinner" id="spinnerCargarEquipos">Cargando…</div>
-      <label for="filtroCoEquipos" style="margin-top:10px;">Filtrar por CO</label>
-      <input id="filtroCoEquipos" placeholder="ej. CO0800000191" />
+      <label for="filtroCoEquipos" style="margin-top:10px;">Filtrar por CO (uno o varios: separados por coma, espacio o salto de línea)</label>
+      <textarea id="filtroCoEquipos" rows="2" placeholder="ej. CO0800000191, CO0800000192"></textarea>
       <div id="resumenEquipos" style="margin-top:8px;font-size:13px;color:var(--text-sub);"></div>
+
+      <div id="barraLoteEquipos" style="display:none;margin-top:12px;">
+        <div class="toolbar">
+          <button id="btnCalcularTodosEquipos" class="secondary-btn" style="margin-top:0;">Calcular mano de obra de todos los mostrados</button>
+          <button id="btnGuardarTodosEquipos" style="margin-top:0;">Confirmado — guardar todos en OPEX</button>
+        </div>
+        <div class="spinner" id="spinnerLoteEquipos">Procesando…</div>
+        <div id="estadoLoteEquipos" style="margin-top:8px;font-size:13px;"></div>
+        <p class="req-note">Es el mismo proceso de uno en uno, para todos los CO mostrados: "Calcular" arma la tabla de cada uno (los que ya están calculados no se recalculan); revisa cada tabla y excluye lo que no aplique; "guardar todos" los escribe en "OPEX" uno tras otro. Los CO que ya tienen filas en OPEX se omiten al guardar en bloque, para no duplicarlas — guárdalos desde su tarjeta si hace falta.</p>
+      </div>
     </div>
 
     <div id="resultadosOpexEquipos"></div>
@@ -976,6 +986,18 @@
         copiarTexto(texto, btnCopiar);
       });
 
+      /** Muestra el resultado de guardar y marca el CO como guardado (el guardado en bloque lo salta
+       *  para no duplicar filas). Lo usan tanto el botón de esta tabla como "guardar todos". */
+      function mostrarGuardado(r) {
+        destinoEl.__opexGuardado = true;
+        var d = document.getElementById(idResultGuardar);
+        if (!d) return;
+        d.innerHTML = '<div class="line ok">✓ Guardado (' + r.guardadas.length + ' fila(s))' +
+          (r.carroCanasta ? ' · Carro canasta ' + formatoPesos(r.carroCanasta.valor) + ' en la fila ' + r.carroCanasta.fila : '') +
+          ' — <a href="' + r.hoja_url + '" target="_blank">ver hoja OPEX</a></div>';
+      }
+      destinoEl.__opexEstado = { opex: opex, filasIncluidas: filasIncluidas, marcarGuardado: mostrarGuardado };
+
       var btnGuardar = document.getElementById(idBtnGuardar);
       if (btnGuardar) btnGuardar.addEventListener('click', function () {
         var filas = filasIncluidas().map(function (f) {
@@ -987,9 +1009,7 @@
         destino.innerHTML = '';
         fetchJSON('POST', '/api/guardar_opex', { co: opex.co, operador: opex.operador, filas: filas }).then(function (r) {
           setRunning(idBtnGuardar, idSpinnerGuardar, false);
-          destino.innerHTML = '<div class="line ok">✓ Guardado (' + r.guardadas.length + ' fila(s))' +
-            (r.carroCanasta ? ' · Carro canasta ' + formatoPesos(r.carroCanasta.valor) + ' en la fila ' + r.carroCanasta.fila : '') +
-            ' — <a href="' + r.hoja_url + '" target="_blank">ver hoja OPEX</a></div>';
+          mostrarGuardado(r);
         }).catch(function (err) {
           setRunning(idBtnGuardar, idSpinnerGuardar, false);
           destino.innerHTML = renderError(err);
@@ -1294,35 +1314,55 @@
       return html;
     }
 
+    /** Calcula la mano de obra de UNA tarjeta con lo que hoy muestra (lo mismo que el botón "Calcular
+     *  mano de obra"; también lo usa "Calcular … todos los mostrados"). Devuelve una promesa con
+     *  { estado: 'ok' | 'sin_tipo' | 'pendiente_or' | 'error', mensaje }. */
+    async function calcularTarjetaOpexEquipos(r) {
+      var id = 'opexEq_' + r.co;
+      var elTipo = document.getElementById(id + '_tipoMedida');
+      var tipoMedidaFinal = r.tipoMedidaFinalInferido || (elTipo ? elTipo.value : '');
+      if (!tipoMedidaFinal) return { estado: 'sin_tipo', mensaje: 'Elige el tipo de medida — no se pudo inferir del SKU del medidor.' };
+
+      var elTipoActual = document.getElementById(id + '_tipoMedidaActual');
+      var orManual = document.getElementById(id + '_orManual').value.trim();
+      var body = {
+        co: r.co,
+        tipo_medida_final: tipoMedidaFinal,
+        tipo_medida_actual: elTipoActual ? (elTipoActual.value || null) : null,
+        ubicacion: document.getElementById(id + '_ubicacion').value || null,
+        secciones: r.secciones,
+        es_instalacion_nueva: document.getElementById(id + '_instalacionNueva').checked,
+        filas_cable: r.filasCable,
+        celda_sku: r.celdaSku
+      };
+      if (orManual) body.or_manual = orManual;
+
+      setRunning(id + '_btnCalcular', id + '_spinner', true);
+      var destino = document.getElementById(id + '_resultado');
+      destino.innerHTML = '';
+      destino.__opexEstado = null;  // sin resultado vigente (el aviso de "ya guardado" se conserva aparte)
+      try {
+        var opex = await fetchJSON('POST', '/api/opex_resolver', body);
+        if (opex.pendiente_operador) {  // el backend responde 202 cuando no logra determinar el OR
+          var motivo = 'No se pudo determinar el operador de red' + (opex.motivo ? ': ' + opex.motivo : '.');
+          destino.innerHTML = '<div class="item warn">⚠ ' + escapeHtml(motivo) + ' Escribe el OR manual en esta tarjeta y vuelve a calcular.</div>';
+          return { estado: 'pendiente_or', mensaje: motivo + ' — escribe el OR manual en su tarjeta.' };
+        }
+        pintarTablaOpex(opex, destino);
+        return { estado: 'ok' };
+      } catch (err) {
+        destino.innerHTML = renderError(err);
+        return { estado: 'error', mensaje: (err && err.message) || String(err) };
+      } finally {
+        setRunning(id + '_btnCalcular', id + '_spinner', false);
+      }
+    }
+
     function cablearTarjetaOpexEquipos(r) {
       var id = 'opexEq_' + r.co;
       document.getElementById(id + '_btnCalcular').addEventListener('click', function () {
-        var tipoMedidaFinal = r.tipoMedidaFinalInferido || document.getElementById(id + '_tipoMedida').value;
-        if (!tipoMedidaFinal) { alert('Elige el tipo de medida — no se pudo inferir del SKU del medidor.'); return; }
-
-        var elTipoActual = document.getElementById(id + '_tipoMedidaActual');
-        var orManual = document.getElementById(id + '_orManual').value.trim();
-        var body = {
-          co: r.co,
-          tipo_medida_final: tipoMedidaFinal,
-          tipo_medida_actual: elTipoActual ? (elTipoActual.value || null) : null,
-          ubicacion: document.getElementById(id + '_ubicacion').value || null,
-          secciones: r.secciones,
-          es_instalacion_nueva: document.getElementById(id + '_instalacionNueva').checked,
-          filas_cable: r.filasCable,
-          celda_sku: r.celdaSku
-        };
-        if (orManual) body.or_manual = orManual;
-
-        setRunning(id + '_btnCalcular', id + '_spinner', true);
-        var destino = document.getElementById(id + '_resultado');
-        destino.innerHTML = '';
-        fetchJSON('POST', '/api/opex_resolver', body).then(function (opex) {
-          setRunning(id + '_btnCalcular', id + '_spinner', false);
-          pintarTablaOpex(opex, destino);
-        }).catch(function (err) {
-          setRunning(id + '_btnCalcular', id + '_spinner', false);
-          destino.innerHTML = renderError(err);
+        calcularTarjetaOpexEquipos(r).then(function (res) {
+          if (res.estado === 'sin_tipo') alert(res.mensaje);
         });
       });
     }
@@ -1332,6 +1372,7 @@
       var resumen = document.getElementById('resumenEquipos');
       resumen.textContent = '';
       equiposYaCargados = false;
+      document.getElementById('barraLoteEquipos').style.display = 'none';
       document.getElementById('resultadosOpexEquipos').innerHTML = '';
 
       fetchJSON('GET', '/api/equipos_resumen').then(function (r) {
@@ -1354,20 +1395,167 @@
       lista.forEach(cablearTarjetaOpexEquipos);
     }
 
+    /** Lista de códigos del filtro: acepta uno o varios separados por coma, punto y coma, espacio o
+     *  salto de línea (también "CO1CO2" pegados sin separador). Sin repetidos. */
+    function tokensFiltroCo(texto) {
+      var tokens = [];
+      (texto || '').toUpperCase().split(/[\s,;]+/).forEach(function (t) {
+        t.split(/(?=CO\d)/).forEach(function (p) { if (p && tokens.indexOf(p) === -1) tokens.push(p); });
+      });
+      return tokens;
+    }
+
+    var cosEquiposMostrados = [];
+
     /** Pinta solo los CO que coinciden con "Filtrar por CO" (todos si está vacío) y actualiza el contador. */
     function aplicarFiltroOpexEquipos() {
-      var filtro = normalizar_codigo_js(document.getElementById('filtroCoEquipos').value);
-      var filtrados = filtro ? cosEquiposCargados.filter(function (r) { return r.co.indexOf(filtro) !== -1; }) : cosEquiposCargados;
-      document.getElementById('resumenEquipos').textContent = filtro
-        ? filtrados.length + ' de ' + cosEquiposCargados.length + ' CO coinciden con "' + filtro + '".'
+      var tokens = tokensFiltroCo(document.getElementById('filtroCoEquipos').value);
+      var coincide = function (r) { return tokens.some(function (t) { return r.co.indexOf(t) !== -1; }); };
+      var filtrados = tokens.length ? cosEquiposCargados.filter(coincide) : cosEquiposCargados;
+      var texto = tokens.length
+        ? filtrados.length + ' de ' + cosEquiposCargados.length + ' CO coinciden con el filtro.'
         : cosEquiposCargados.length + ' CO encontrados en "Equipos".';
+      var sinCoincidencia = tokens.filter(function (t) { return !cosEquiposCargados.some(function (r) { return r.co.indexOf(t) !== -1; }); });
+      if (sinCoincidencia.length) texto += ' No están en "Equipos": ' + sinCoincidencia.join(', ') + '.';
+      document.getElementById('resumenEquipos').textContent = texto;
+
+      cosEquiposMostrados = filtrados;
+      document.getElementById('estadoLoteEquipos').innerHTML = '';
+      document.getElementById('barraLoteEquipos').style.display = filtrados.length ? '' : 'none';
       pintarListaOpexEquipos(filtrados);
     }
 
     document.getElementById('filtroCoEquipos').addEventListener('input', function () {
       if (equiposYaCargados) aplicarFiltroOpexEquipos();  // antes de cargar no hay nada que filtrar
     });
-    function normalizar_codigo_js(s) { return (s || '').replace(/\s+/g, '').toUpperCase(); }
+
+    // ---- Calcular / guardar VARIOS CO a la vez (mismo proceso de uno en uno, repetido) ----
+    var loteEquiposOcupado = false;
+    var elementosBloqueadosEquipos = [];
+
+    function resultadoTarjetaEquipos(r) { return document.getElementById('opexEq_' + r.co + '_resultado'); }
+    function listaCorta(arr, max) { return arr.length > max ? arr.slice(0, max).join(', ') + ' … (+' + (arr.length - max) + ')' : arr.join(', '); }
+
+    /** Mientras corre un proceso en bloque se bloquea TODO el panel: dos guardados a la vez
+     *  escribirían en la misma "siguiente fila" de la hoja OPEX y se pisarían. */
+    function bloquearPanelEquipos(bloquear) {
+      if (bloquear) {
+        elementosBloqueadosEquipos = [].slice.call(document.querySelectorAll('#panelOpexEquipos button, #panelOpexEquipos textarea, #panelOpexEquipos select, #panelOpexEquipos input'))
+          .filter(function (el) { return !el.disabled; });
+        elementosBloqueadosEquipos.forEach(function (el) { el.disabled = true; });
+      } else {
+        elementosBloqueadosEquipos.forEach(function (el) { el.disabled = false; });
+        elementosBloqueadosEquipos = [];
+      }
+    }
+
+    function lineasAtencionEquipos(titulo, items) {
+      if (!items.length) return '';
+      return '<div class="item warn">' + escapeHtml(titulo) + ' (' + items.length + '):</div>' +
+        items.map(function (t) { return '<div class="item warn" style="padding-left:12px;">• ' + escapeHtml(t) + '</div>'; }).join('');
+    }
+
+    async function calcularTodosEquipos() {
+      if (loteEquiposOcupado) return;
+      var estadoEl = document.getElementById('estadoLoteEquipos'), sp = document.getElementById('spinnerLoteEquipos');
+      // Solo los que aún no tienen una tabla calculada: recalcular borraría las exclusiones que ya revisaste.
+      var pendientes = cosEquiposMostrados.filter(function (r) { var d = resultadoTarjetaEquipos(r); return d && !d.__opexEstado; });
+      if (!pendientes.length) { estadoEl.innerHTML = '<div class="item">Todos los CO mostrados ya están calculados.</div>'; return; }
+
+      loteEquiposOcupado = true;
+      bloquearPanelEquipos(true);
+      setRunning('btnCalcularTodosEquipos', 'spinnerLoteEquipos', true);
+      estadoEl.innerHTML = '';
+      var ok = 0, atencion = [];
+      try {
+        for (var i = 0; i < pendientes.length; i++) {
+          sp.textContent = 'Calculando ' + (i + 1) + ' de ' + pendientes.length + ' (' + pendientes[i].co + ')…';
+          var res = await calcularTarjetaOpexEquipos(pendientes[i]);
+          if (res.estado === 'ok') ok++; else atencion.push(pendientes[i].co + ' — ' + res.mensaje);
+        }
+      } finally {
+        bloquearPanelEquipos(false);
+        loteEquiposOcupado = false;
+        setRunning('btnCalcularTodosEquipos', 'spinnerLoteEquipos', false);
+        sp.textContent = 'Procesando…';
+      }
+      estadoEl.innerHTML = '<div class="line ok">✓ Calculados: ' + ok + ' de ' + pendientes.length + '. Revisa cada tabla (puedes excluir maniobras) y luego guarda.</div>' +
+        lineasAtencionEquipos('Necesitan tu atención antes de guardarse', atencion);
+    }
+
+    async function guardarTodosEquipos() {
+      if (loteEquiposOcupado) return;
+      var estadoEl = document.getElementById('estadoLoteEquipos'), sp = document.getElementById('spinnerLoteEquipos');
+
+      var sinCalcular = [], yaGuardados = [], conOpexPrevio = [], sinFilas = [], listos = [];
+      cosEquiposMostrados.forEach(function (r) {
+        var d = resultadoTarjetaEquipos(r), est = d && d.__opexEstado;
+        if (!est) { sinCalcular.push(r.co); return; }
+        if (d.__opexGuardado) { yaGuardados.push(r.co); return; }
+        if (r.filasOpexExistentes > 0) { conOpexPrevio.push(r.co); return; }
+        var filas = est.filasIncluidas().map(function (f) { return { maniobra: f.maniobra, cantidad: f.cantidad }; });
+        if (!filas.length) { sinFilas.push(r.co); return; }
+        listos.push({ r: r, est: est, filas: filas });
+      });
+
+      var omitidos = lineasAtencionEquipos('Sin calcular (no se guardan)', sinCalcular) +
+        lineasAtencionEquipos('Ya tienen filas en OPEX (se omiten para no duplicarlas; guárdalos desde su tarjeta si hace falta)', conOpexPrevio) +
+        lineasAtencionEquipos('Sin ninguna maniobra incluida', sinFilas) +
+        (yaGuardados.length ? '<div class="item">Ya guardados antes: ' + escapeHtml(listaCorta(yaGuardados, 15)) + '</div>' : '');
+      if (!listos.length) {
+        estadoEl.innerHTML = '<div class="item warn">No hay ningún CO listo para guardar.</div>' + omitidos;
+        return;
+      }
+
+      var totalFilas = listos.reduce(function (s, x) { return s + x.filas.length; }, 0);
+      var msg = 'Se guardarán ' + listos.length + ' CO (' + totalFilas + ' fila(s) en total) en la hoja OPEX:\n' + listaCorta(listos.map(function (x) { return x.r.co; }), 15);
+      if (conOpexPrevio.length) msg += '\n\nSe omiten ' + conOpexPrevio.length + ' CO que YA tienen filas en OPEX (' + listaCorta(conOpexPrevio, 10) + '): guardarlos otra vez duplicaría esas filas.';
+      if (sinCalcular.length) msg += '\n\n' + sinCalcular.length + ' CO mostrados aún no están calculados y no se guardarán.';
+      msg += '\n\n¿Continuar?';
+      if (!confirm(msg)) return;
+
+      loteEquiposOcupado = true;
+      bloquearPanelEquipos(true);
+      setRunning('btnGuardarTodosEquipos', 'spinnerLoteEquipos', true);
+      estadoEl.innerHTML = '';
+      var guardados = [], falla = null;
+      try {
+        // Uno tras otro (nunca en paralelo): cada guardado escribe en la "siguiente fila en blanco".
+        for (var i = 0; i < listos.length; i++) {
+          var x = listos[i];
+          sp.textContent = 'Guardando ' + (i + 1) + ' de ' + listos.length + ' (' + x.r.co + ')…';
+          try {
+            var resp = await fetchJSON('POST', '/api/guardar_opex', { co: x.r.co, operador: x.est.opex.operador, filas: x.filas });
+            x.est.marcarGuardado(resp);
+            guardados.push(x.r.co);
+          } catch (e) {
+            // Se detiene en el primer error: sigue escribiendo en una hoja real y un fallo suele ser de cuota o permisos.
+            falla = x.r.co + ' — ' + ((e && e.message) || e);
+            break;
+          }
+        }
+      } finally {
+        bloquearPanelEquipos(false);
+        loteEquiposOcupado = false;
+        setRunning('btnGuardarTodosEquipos', 'spinnerLoteEquipos', false);
+        sp.textContent = 'Procesando…';
+      }
+
+      var html = guardados.length ? '<div class="line ok">✓ Guardados en OPEX: ' + guardados.length + ' CO (' + escapeHtml(listaCorta(guardados, 15)) + ').</div>' : '';
+      if (falla) {
+        var pendientesGuardar = listos.length - guardados.length;
+        html += '<div class="error-box">Se detuvo en ' + escapeHtml(falla) + '. Revisa la hoja OPEX antes de reintentar ese CO: puede haber quedado a medias. ' +
+          'Faltan ' + pendientesGuardar + ' CO por guardar; los ya guardados no se repiten si vuelves a pulsar el botón.</div>';
+      }
+      estadoEl.innerHTML = html + omitidos;
+    }
+
+    document.getElementById('btnCalcularTodosEquipos').addEventListener('click', function () {
+      calcularTodosEquipos().catch(function (e) { document.getElementById('estadoLoteEquipos').innerHTML = renderError(e); });
+    });
+    document.getElementById('btnGuardarTodosEquipos').addEventListener('click', function () {
+      guardarTodosEquipos().catch(function (e) { document.getElementById('estadoLoteEquipos').innerHTML = renderError(e); });
+    });
 
     // ---------- Pestañas: Alcance Quinquenal / Comparación Masiva / OPEX desde Equipos ----------
     var PANELES_TAB = { alcance: 'panelAlcance', lote: 'panelLote', opexEquipos: 'panelOpexEquipos' };
