@@ -327,3 +327,36 @@ def test_endpoint_pasa_a_claude_el_tiempo_que_queda(api, monkeypatch):
     cliente.post("/api/comparar_config", json={"co": "CO0100002908", "candidatas": ["opus-5-5-medio"]})
 
     assert timeouts and set(timeouts) == {30.0}
+
+
+# ---------------------------------------------------------------- variantes de prompt
+
+def test_las_candidatas_solo_json_usan_el_prompt_sin_resumen_y_la_actual_sigue_con_v2(monkeypatch):
+    enviados = []
+
+    def post(url, headers=None, json=None, timeout=None):
+        enviados.append((json["model"], json["output_config"]["effort"], "ANALISIS_LISTO" in json["system"][0]["text"]))
+        return Resp(200, {"content": [{"type": "text", "text": _json(tipo_medida_actual="directa")}], "usage": {"input_tokens": 4000, "output_tokens": 800}})
+
+    monkeypatch.setattr(llm_client.requests, "post", post)
+    monkeypatch.setattr(llm_client.time, "sleep", lambda s: None)
+
+    r = comparar_acta_texto(META, "texto ocr", CFG, ["opus-5-json", "opus-5-bajo-json", "sonnet-5-5-medio-json"])
+
+    # (modelo, esfuerzo, ¿el prompt pide el RESUMEN?)
+    assert sorted(enviados) == sorted([
+        ("claude-opus-5", "medium", True),      # la actual: V2 de producción
+        ("claude-opus-5", "medium", False),     # opus-5-json: mismo modelo y esfuerzo, solo cambia el prompt
+        ("claude-opus-5", "low", False),        # opus-5-bajo-json
+        ("claude-sonnet-5-5", "medium", False),  # sonnet-5-5-medio-json
+    ])
+    assert all(c["ok"] for c in r["configuraciones"]) and set(r["comparaciones"]) == {"opus-5-json", "opus-5-bajo-json", "sonnet-5-5-medio-json"}
+
+
+def test_todas_las_candidatas_ofrecidas_tienen_modelo_con_precio_y_prompt_valido():
+    from config.settings import PRECIOS_USD_POR_MTOK
+
+    for cid, c in comparador.CONFIGS_CANDIDATAS.items():
+        assert c["modelo"] in PRECIOS_USD_POR_MTOK, cid  # si no, su costo saldría en blanco
+        assert c.get("prompt", "v2") in comparador.PROMPTS, cid
+        assert c["esfuerzo"] in ("low", "medium", "high"), cid

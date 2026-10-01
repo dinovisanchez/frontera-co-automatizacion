@@ -294,6 +294,10 @@ actual y tiempo.
 - **La configuración actual es la referencia, no la verdad.** Una diferencia puede ser un error de la
   candidata o uno de la actual: se revisa contra el acta (la pestaña trae el enlace). La herramienta
   no decide sola.
+- Además de modelo y esfuerzo, una candidata puede cambiar el **prompt**. Hoy existe la variante `solo_json`
+  (`ACTA_EXTRACTION_PROMPT_V2_SOLO_JSON`): V1/V2 le piden a Claude escribir cada campo DOS veces (un bloque
+  `RESUMEN:` de una línea por campo y luego el JSON) y el código solo lee el JSON; la variante pide solo el
+  JSON para ahorrar tokens de salida, que son los más caros. **No está en producción**: solo se mide aquí.
 - Una acta por llamada (cabe en los 60 s de Vercel); las candidatas corren en paralelo en hilos. Igual que
   producción, si el acta elegida no se puede descargar o leer prueba la siguiente (mientras quede tiempo) y lo
   avisa (`omitidas`). Presupuesto de 55 s: lo que quede tras leer el acta es el tiempo de Claude (un solo

@@ -65,3 +65,19 @@ def test_campos_a_combinar_no_incluye_los_bono():
     no deben detener el escaneo de más actas por sí solos (Codigo.gs línea 3272-3281)."""
     for campo_bono in ("relacion_tc", "relacion_tp", "montaje_tc", "totalizador_amperios", "conductor_calibre"):
         assert campo_bono not in CAMPOS_A_COMBINAR_ALCANCE
+
+
+def test_variante_solo_json_es_v2_salvo_el_bloque_de_formato():
+    from core.prompts.acta_extraction_prompt import ACTA_EXTRACTION_PROMPT_V2_SOLO_JSON as SOLO_JSON
+
+    marca = "=== FORMATO DE RESPUESTA"
+    # Todas las reglas y el esquema son literalmente los de producción (V2): solo cambia cómo se pide la salida.
+    assert SOLO_JSON[: SOLO_JSON.index(marca)] == ACTA_EXTRACTION_PROMPT_V2[: ACTA_EXTRACTION_PROMPT_V2.index(marca)]
+    assert SOLO_JSON != ACTA_EXTRACTION_PROMPT_V2  # el reemplazo sí ocurrió
+    assert "ANALISIS_LISTO" not in SOLO_JSON and 'campo: valor' not in SOLO_JSON  # ya no pide el bloque de líneas
+    assert "ÚNICAMENTE con el bloque JSON" in SOLO_JSON and "```json" in SOLO_JSON
+
+
+def test_v2_de_produccion_sigue_pidiendo_el_resumen():
+    # La variante no debe haber tocado el prompt de producción.
+    assert "ANALISIS_LISTO" in ACTA_EXTRACTION_PROMPT_V2 and 'formato EXACTO "campo: valor"' in ACTA_EXTRACTION_PROMPT_V2

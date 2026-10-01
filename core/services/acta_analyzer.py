@@ -30,8 +30,12 @@ def _instruccion_comun(meta: MetadatosActa) -> str:
     )
 
 
-def analizar_acta_desde_texto(meta: MetadatosActa, texto_ocr: str, llm: AnthropicClient) -> RespuestaActa:
-    """Puerto de bodyClaudeActaTexto — intento rápido, SOLO texto (OCR), sin imágenes."""
+def analizar_acta_desde_texto(
+    meta: MetadatosActa, texto_ocr: str, llm: AnthropicClient, system_prompt: str = ACTA_EXTRACTION_PROMPT_V2,
+) -> RespuestaActa:
+    """Puerto de bodyClaudeActaTexto — intento rápido, SOLO texto (OCR), sin imágenes.
+
+    `system_prompt`: producción usa siempre V2; la pestaña "Comparar modelos" pasa variantes para medirlas."""
     instruccion = (
         "Adjunto el TEXTO (extraído por OCR, puede tener errores de reconocimiento — si algo "
         "queda ilegible o ambiguo, prefiere dejarlo en null antes que adivinar) del acta de "
@@ -40,7 +44,7 @@ def analizar_acta_desde_texto(meta: MetadatosActa, texto_ocr: str, llm: Anthropi
         + f"\n\n--- TEXTO DEL ACTA (OCR) ---\n{texto_ocr}"
     )
     body = llm.cuerpo_extraccion_acta(
-        ACTA_EXTRACTION_PROMPT_V2,
+        system_prompt,
         [{"type": "text", "text": instruccion}],
     )
     return _ejecutar(body, llm, meta, "acta_texto")
