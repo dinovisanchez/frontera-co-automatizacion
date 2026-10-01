@@ -12,8 +12,12 @@ actas (acta_v2_...) al reforzar este mismo prompt.
 ACTA_EXTRACTION_PROMPT_V2 (2026-09-22, caso real CO0200002425): agrega una advertencia sobre
 campos tipo "Red de media tensión (kV)" que describen la red que alimenta un transformador
 compartido, no la conexión del cliente — ver el texto agregado más abajo para el detalle
-completo del caso. Los servicios deben usar la versión más reciente (V2); V1 se conserva solo
-como referencia histórica de lo migrado originalmente.
+completo del caso. V1 se conserva solo como referencia histórica de lo migrado originalmente.
+
+ACTA_EXTRACTION_PROMPT_V3 (2026-10-01, reducción de costos): es V2 con UN solo cambio, el bloque de formato
+de salida (ya no pide el RESUMEN que nadie lee). Es el que usa la lectura de acta por TEXTO en producción;
+la lectura por PDF sigue con V2 porque el cambio solo se midió sobre texto. V2 se conserva para esa ruta y
+para que la pestaña "Comparar modelos" pueda contrastar.
 """
 
 ACTA_EXTRACTION_PROMPT_V1 = """Eres un Ingeniero Electricista Senior colombiano especialista en sistemas de medición de energía eléctrica (RETIE, CREG 038/2014, NTC 5019).
@@ -60,12 +64,12 @@ ACTA_EXTRACTION_PROMPT_V2 = ACTA_EXTRACTION_PROMPT_V1.replace(
 )
 
 
-# Variante "solo JSON" (Dinovi, 2026-10-01, reducción de costos): V1/V2 le piden a Claude escribir cada campo DOS
-# veces — primero un bloque "RESUMEN:" de una línea por campo y luego el JSON — y el código solo lee el JSON
+# V3 (Dinovi, 2026-10-01, reducción de costos): V1/V2 le piden a Claude escribir cada campo DOS veces —
+# primero un bloque "RESUMEN:" de una línea por campo y luego el JSON — y el código solo lee el JSON
 # (RespuestaActa.resumen no lo usa nadie). Los tokens de SALIDA son los más caros ($25/MTok en Opus 5, $10 en
-# Sonnet 5.5). NO está en producción: solo la usa la pestaña "Comparar modelos" para medir si pedir solo el JSON
-# baja el costo sin cambiar lo extraído. Mismo texto que V2 salvo el bloque de formato (ver tests).
-ACTA_EXTRACTION_PROMPT_V2_SOLO_JSON = ACTA_EXTRACTION_PROMPT_V2.replace(
+# Sonnet 5.5). Medido en "Comparar modelos" con Opus 5 / esfuerzo medio: 3 de 3 actas idénticas a V2 y ≈ −11 %
+# de costo. Mismo texto que V2 salvo el bloque de formato (ver tests).
+ACTA_EXTRACTION_PROMPT_V3 = ACTA_EXTRACTION_PROMPT_V2.replace(
     'RESUMEN:\nUna línea por cada campo del JSON de arriba, formato EXACTO "campo: valor" — nada más.\n\nANALISIS_LISTO\n```json',
     'Responde ÚNICAMENTE con el bloque JSON de abajo — sin bloque RESUMEN y sin ningún texto antes ni después (el sistema solo lee el JSON).\n```json',
 )

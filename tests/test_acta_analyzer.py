@@ -2,7 +2,7 @@
 
 from config.settings import AnthropicConfig
 from core.data_sources.llm_client import AnthropicClient
-from core.services.acta_analyzer import MetadatosActa, analizar_acta_desde_texto
+from core.services.acta_analyzer import MetadatosActa, analizar_acta_desde_pdf, analizar_acta_desde_texto
 
 _RESPUESTA_CANNED = """RESUMEN:
 tipo_medida_actual: semidirecta
@@ -62,8 +62,8 @@ def test_spec_none_si_el_llm_no_devuelve_json_valido():
     assert resultado.spec is None
 
 
-def test_se_puede_pasar_otro_system_prompt_y_una_respuesta_solo_json_se_parsea():
-    from core.prompts.acta_extraction_prompt import ACTA_EXTRACTION_PROMPT_V2, ACTA_EXTRACTION_PROMPT_V2_SOLO_JSON
+def test_produccion_lee_por_texto_con_v3_y_por_pdf_con_v2_y_una_respuesta_solo_json_se_parsea():
+    from core.prompts.acta_extraction_prompt import ACTA_EXTRACTION_PROMPT_V2, ACTA_EXTRACTION_PROMPT_V3
 
     enviados = []
 
@@ -75,9 +75,11 @@ def test_se_puede_pasar_otro_system_prompt_y_una_respuesta_solo_json_se_parsea()
     meta = MetadatosActa(co="CO0100002908", tipo_acta="VIPE", fecha_visita="2026-01-01")
     llm = Capturador("")
 
-    por_defecto = analizar_acta_desde_texto(meta, "ocr", llm)
-    variante = analizar_acta_desde_texto(meta, "ocr", llm, system_prompt=ACTA_EXTRACTION_PROMPT_V2_SOLO_JSON)
+    por_texto = analizar_acta_desde_texto(meta, "ocr", llm)
+    otra = analizar_acta_desde_texto(meta, "ocr", llm, system_prompt=ACTA_EXTRACTION_PROMPT_V2)  # lo que usa el control del comparador
+    por_pdf = analizar_acta_desde_pdf(meta, b"%PDF-1.4 falso", llm)
 
-    assert enviados == [ACTA_EXTRACTION_PROMPT_V2, ACTA_EXTRACTION_PROMPT_V2_SOLO_JSON]  # producción sigue usando V2
-    assert por_defecto.spec["tipo_medida_actual"] == variante.spec["tipo_medida_actual"] == "semidirecta"
-    assert variante.resumen == ""  # nadie lo usa; que falte no rompe nada
+    # texto -> V3 (sin RESUMEN, lo medido); se puede pasar otro; PDF -> V2 (el cambio no se midió sobre PDF)
+    assert enviados == [ACTA_EXTRACTION_PROMPT_V3, ACTA_EXTRACTION_PROMPT_V2, ACTA_EXTRACTION_PROMPT_V2]
+    assert por_texto.spec["tipo_medida_actual"] == otra.spec["tipo_medida_actual"] == por_pdf.spec["tipo_medida_actual"] == "semidirecta"
+    assert por_texto.resumen == ""  # nadie lo usa; que falte no rompe nada

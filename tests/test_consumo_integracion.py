@@ -43,8 +43,9 @@ def test_extraccion_de_acta_en_texto_queda_etiquetada(monkeypatch):
     assert resultado.spec["tipo_medida_actual"] == "semidirecta"  # la extracción sigue funcionando igual
     (fila,) = _filas(sheets)
     assert (fila["co"], fila["tipo"], fila["acta"], fila["origen"]) == ("CO0100002908", "acta_texto", "VIPE", "individual")
-    assert (fila["modelo"], fila["esfuerzo"], fila["resultado"]) == ("claude-opus-5", "medium", "ok")
-    assert fila["costo_usd"] == pytest.approx((300 * 5 + 2500 * 0.5 + 900 * 25) / 1e6)
+    # La lectura por TEXTO va con Sonnet 5.5 (config.settings.model_acta_texto): sus precios, no los de Opus 5.
+    assert (fila["modelo"], fila["esfuerzo"], fila["resultado"]) == ("claude-sonnet-5-5", "medium", "ok")
+    assert fila["costo_usd"] == pytest.approx((300 * 2 + 2500 * 0.2 + 900 * 10) / 1e6)
 
 
 def test_extraccion_con_pdf_se_distingue_de_la_de_texto(monkeypatch):

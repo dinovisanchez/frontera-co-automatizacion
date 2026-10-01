@@ -12,7 +12,9 @@ from core.services.comparador import ID_ACTUAL, comparar_acta_texto, comparar_sp
 from tests.test_llm_client_consumo import Resp
 
 META = MetadatosActa(co="CO0100002908", tipo_acta="VIPE", fecha_visita="2026-01-01")
-CFG = AnthropicConfig(api_key="fake")  # modelo claude-opus-5, esfuerzo medium
+# La "actual" de estas pruebas es Opus 5 a propósito (así los casos de abajo no dependen del modelo de producción, que hoy
+# es Sonnet 5.5; ese default se prueba en test_config_modelos.py).
+CFG = AnthropicConfig(api_key="fake", model_acta_texto="claude-opus-5", effort_acta_texto="medium")
 
 
 def test_normalizar_valor_ignora_formato_pero_no_significado():
@@ -75,17 +77,17 @@ def test_compara_la_misma_acta_con_la_actual_y_las_candidatas(monkeypatch):
         "claude-sonnet-5-5": (_json(**{**base, "capacidad_instalada_kva": 150}), 600),
     })
 
-    r = comparar_acta_texto(META, "texto ocr", CFG, ["opus-5-5-medio", "sonnet-5-5-medio"])
+    r = comparar_acta_texto(META, "texto ocr", CFG, ["opus-5-5-medio", "sonnet-5-5-bajo"])
 
     por_id = {c["id"]: c for c in r["configuraciones"]}
-    assert list(por_id) == [ID_ACTUAL, "opus-5-5-medio", "sonnet-5-5-medio"]
-    assert por_id[ID_ACTUAL]["modelo"] == "claude-opus-5" and por_id["sonnet-5-5-medio"]["esfuerzo"] == "medium"
+    assert list(por_id) == [ID_ACTUAL, "opus-5-5-medio", "sonnet-5-5-bajo"]
+    assert por_id[ID_ACTUAL]["modelo"] == "claude-opus-5" and por_id["sonnet-5-5-bajo"]["esfuerzo"] == "low"
     assert r["comparaciones"]["opus-5-5-medio"]["coinciden"] == 12                      # idéntica a la actual
-    assert r["comparaciones"]["sonnet-5-5-medio"]["diferencias"]["capacidad_instalada_kva"]["estado"] == "diferente"
+    assert r["comparaciones"]["sonnet-5-5-bajo"]["diferencias"]["capacidad_instalada_kva"]["estado"] == "diferente"
     # costo = (4000 entrada*5 + 2500 caché*0.5 + salida*25)/1e6 con los precios de cada modelo
     assert por_id[ID_ACTUAL]["costo_usd"] == pytest.approx((4000 * 5 + 2500 * 0.5 + 1200 * 25) / 1e6)
-    assert por_id["sonnet-5-5-medio"]["costo_usd"] == pytest.approx((4000 * 2 + 2500 * 0.2 + 600 * 10) / 1e6)
-    assert por_id["sonnet-5-5-medio"]["costo_usd"] < por_id["opus-5-5-medio"]["costo_usd"] < por_id[ID_ACTUAL]["costo_usd"]
+    assert por_id["sonnet-5-5-bajo"]["costo_usd"] == pytest.approx((4000 * 2 + 2500 * 0.2 + 600 * 10) / 1e6)
+    assert por_id["sonnet-5-5-bajo"]["costo_usd"] < por_id["opus-5-5-medio"]["costo_usd"] < por_id[ID_ACTUAL]["costo_usd"]
     assert len(por_id[ID_ACTUAL]["registros"]) == 1 and por_id[ID_ACTUAL]["registros"][0]["origen"] == "comparacion"
 
 
@@ -97,12 +99,12 @@ def test_una_candidata_que_falla_es_un_resultado_no_un_error(monkeypatch):
         "claude-opus-5-5": ("no hay json acá", 100),
     })
 
-    r = comparar_acta_texto(META, "texto", CFG, ["sonnet-5-5-medio", "opus-5-5-medio"])
+    r = comparar_acta_texto(META, "texto", CFG, ["sonnet-5-5-bajo", "opus-5-5-medio"])
 
     por_id = {c["id"]: c for c in r["configuraciones"]}
-    assert por_id["sonnet-5-5-medio"]["ok"] is False and "400" in por_id["sonnet-5-5-medio"]["error"]
+    assert por_id["sonnet-5-5-bajo"]["ok"] is False and "400" in por_id["sonnet-5-5-bajo"]["error"]
     assert por_id["opus-5-5-medio"]["ok"] is False and "JSON" in por_id["opus-5-5-medio"]["error"]
-    assert r["comparaciones"]["sonnet-5-5-medio"]["conteo"]["sin_resultado"] == 12
+    assert r["comparaciones"]["sonnet-5-5-bajo"]["conteo"]["sin_resultado"] == 12
     assert por_id[ID_ACTUAL]["ok"] is True
 
 
@@ -132,6 +134,7 @@ def api(monkeypatch):
     from core.services.acta_ocr import OcrResultado
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+    monkeypatch.setenv("ACTA_TEXTO_MODELO", "claude-opus-5")  # la actual del endpoint = Opus 5 (de paso prueba el override por entorno)
     filas = [
         {"bia_code": "CO0100002908", "service_type_id": "VIPE", "fecha_visita": "2026-02-01", "act_pdf_url": "https://x/reciente.pdf", "estado_visita": "Cierre Exitoso"},
         {"bia_code": "CO0100002908", "service_type_id": "INST", "fecha_visita": "2025-01-01", "act_pdf_url": "https://x/vieja.pdf", "estado_visita": "Cierre Exitoso"},
@@ -236,7 +239,7 @@ def test_endpoint_co_sin_visita_exitosa_explica_el_motivo(api):
     {"indice": 0, "candidatas": ["opus-5-5-medio"]},                                   # sin CO
     {"co": "CO1", "candidatas": []},                                                   # sin candidatas
     {"co": "CO1", "candidatas": ["modelo-inventado"]},                                 # candidata fuera de la lista
-    {"co": "CO1", "candidatas": ["opus-5-5-medio", "opus-5-5-bajo", "sonnet-5-5-medio", "sonnet-5-5-bajo"]},  # demasiadas
+    {"co": "CO1", "candidatas": ["opus-5-5-medio", "opus-5-5-bajo", "sonnet-5-5-bajo", "opus-5-bajo"]},  # demasiadas
     {"co": "CO1", "indice": 9, "candidatas": ["opus-5-5-medio"]},                      # índice fuera de rango
     {"co": "CO1", "indice": "0", "candidatas": ["opus-5-5-medio"]},                    # índice no entero
 ])
@@ -279,7 +282,7 @@ def test_la_comparacion_hace_un_solo_intento_con_el_tiempo_que_le_dan(monkeypatc
     monkeypatch.setattr(llm_client.requests, "post", post)
     monkeypatch.setattr(llm_client.time, "sleep", lambda s: None)
 
-    r = comparar_acta_texto(META, "texto", CFG, ["sonnet-5-5-medio"], timeout_seg=30)
+    r = comparar_acta_texto(META, "texto", CFG, ["sonnet-5-5-bajo"], timeout_seg=30)
 
     assert sorted(llamadas) == [("claude-opus-5", 30), ("claude-sonnet-5-5", 30)]  # 1 intento por configuración, no 3
     assert all(c["ok"] is False and "No respondió en 30 s" in c["error"] for c in r["configuraciones"])
@@ -331,7 +334,7 @@ def test_endpoint_pasa_a_claude_el_tiempo_que_queda(api, monkeypatch):
 
 # ---------------------------------------------------------------- variantes de prompt
 
-def test_las_candidatas_solo_json_usan_el_prompt_sin_resumen_y_la_actual_sigue_con_v2(monkeypatch):
+def test_la_actual_es_sonnet_con_v3_y_el_control_de_antes_es_opus_con_el_prompt_con_resumen(monkeypatch):
     enviados = []
 
     def post(url, headers=None, json=None, timeout=None):
@@ -341,16 +344,18 @@ def test_las_candidatas_solo_json_usan_el_prompt_sin_resumen_y_la_actual_sigue_c
     monkeypatch.setattr(llm_client.requests, "post", post)
     monkeypatch.setattr(llm_client.time, "sleep", lambda s: None)
 
-    r = comparar_acta_texto(META, "texto ocr", CFG, ["opus-5-json", "opus-5-bajo-json", "sonnet-5-5-medio-json"])
+    produccion = AnthropicConfig(api_key="fake")  # los defaults reales de producción
+    r = comparar_acta_texto(META, "texto ocr", produccion, ["opus-5-antes", "opus-5-medio"])
 
     # (modelo, esfuerzo, ¿el prompt pide el RESUMEN?)
     assert sorted(enviados) == sorted([
-        ("claude-opus-5", "medium", True),      # la actual: V2 de producción
-        ("claude-opus-5", "medium", False),     # opus-5-json: mismo modelo y esfuerzo, solo cambia el prompt
-        ("claude-opus-5", "low", False),        # opus-5-bajo-json
-        ("claude-sonnet-5-5", "medium", False),  # sonnet-5-5-medio-json
+        ("claude-sonnet-5-5", "medium", False),  # la actual: Sonnet 5.5 con V3 (sin RESUMEN)
+        ("claude-opus-5", "medium", True),       # opus-5-antes: la producción de antes, exacta (V2 con RESUMEN)
+        ("claude-opus-5", "medium", False),      # opus-5-medio: Opus con el prompt de ahora
     ])
-    assert all(c["ok"] for c in r["configuraciones"]) and set(r["comparaciones"]) == {"opus-5-json", "opus-5-bajo-json", "sonnet-5-5-medio-json"}
+    por_id = {c["id"]: c for c in r["configuraciones"]}
+    assert por_id[ID_ACTUAL]["modelo"] == "claude-sonnet-5-5" and por_id["opus-5-antes"]["modelo"] == "claude-opus-5"
+    assert all(c["ok"] for c in r["configuraciones"]) and set(r["comparaciones"]) == {"opus-5-antes", "opus-5-medio"}
 
 
 def test_todas_las_candidatas_ofrecidas_tienen_modelo_con_precio_y_prompt_valido():
@@ -358,5 +363,5 @@ def test_todas_las_candidatas_ofrecidas_tienen_modelo_con_precio_y_prompt_valido
 
     for cid, c in comparador.CONFIGS_CANDIDATAS.items():
         assert c["modelo"] in PRECIOS_USD_POR_MTOK, cid  # si no, su costo saldría en blanco
-        assert c.get("prompt", "v2") in comparador.PROMPTS, cid
+        assert c.get("prompt", comparador.PROMPT_PRODUCCION) in comparador.PROMPTS, cid
         assert c["esfuerzo"] in ("low", "medium", "high"), cid

@@ -156,7 +156,7 @@ class AnthropicClient:
         (Codigo.gs líneas 3395-3422): model/max_tokens/output_config del acta original, sin
         cambiar ninguno por defecto.
 
-        `system_prompt` (ACTA_EXTRACTION_PROMPT_V2, ~2500 tokens) es idéntico en cada llamada
+        `system_prompt` (ACTA_EXTRACTION_PROMPT_V2/V3, ~2500 tokens) es idéntico en cada llamada
         de un mismo job — (antes hasta 5 actas por CO; hoy UNA, ver alcance_combiner.seleccionar_acta) — así
         que va con `cache_control: ephemeral` para que Anthropic lo facture como cache-hit
         (~90% más barato) en vez de reprocesarlo entero cada vez.
@@ -168,6 +168,15 @@ class AnthropicClient:
             "system": [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
             "messages": [{"role": "user", "content": contenido_mensaje}],
         }
+
+    def cuerpo_extraccion_acta_texto(self, system_prompt: str, contenido_mensaje: list[dict]) -> dict:
+        """Igual que `cuerpo_extraccion_acta`, pero con el modelo/esfuerzo de la lectura por TEXTO
+        (`model_acta_texto` / `effort_acta_texto`, hoy Sonnet 5.5): es la llamada más frecuente y se
+        decide aparte de la lectura por PDF, el operador de red y los certificados."""
+        body = self.cuerpo_extraccion_acta(system_prompt, contenido_mensaje)
+        body["model"] = self._cfg.model_acta_texto
+        body["output_config"] = {"effort": self._cfg.effort_acta_texto}
+        return body
 
     def cuerpo_extraccion_puntual(
         self, system_prompt: str, contenido_mensaje: list[dict], max_tokens: int, effort: str
