@@ -280,14 +280,36 @@ y una tabla por modelo+esfuerzo para comparar el antes y el después de un cambi
 - Mide, no ahorra: sirve para decidir con datos (¿el caché funciona?, ¿hay respuestas cortadas o
   reintentos pagados?, ¿cuánto cuesta un CO?) antes de tocar modelo o esfuerzo.
 
+## Qué modelo de Claude usa cada llamada (Dinovi, 2026-10-01)
+
+| Llamada | Modelo · esfuerzo | Prompt |
+|---|---|---|
+| Lectura del acta por **TEXTO** (OCR) — la más frecuente y la que más gasta | **Sonnet 5.5** · medio (`model_acta_texto` / `effort_acta_texto`) | V3 (solo JSON) |
+| Lectura del acta por PDF (rara: solo si el texto no se pudo extraer) | Opus 5 · medio (`model` / `effort`) | V2 |
+| Operador de red desde un acta, relación certificada de un TC/TP | Opus 5 · bajo | los suyos |
+
+- **Por qué Sonnet:** en "Comparar modelos" costó ≈ −62 % por acta frente a Opus 5 (≈ $0,02 contra ≈ $0,05) y con el
+  prompt V3 coincidió en 35 de 36 campos en 3 actas (solo dejó vacío `ubicacion_medida` en una). Son pocas actas:
+  **hay que seguir vigilando** con la pestaña "Comparar modelos" (control `Opus 5 · como producción de antes`) y con
+  "Consumo".
+- **Qué puede pasar si Sonnet se equivoca:** en lo medido nunca puso un valor distinto, solo dejó campos vacíos. Un
+  campo vacío entra a las reglas igual que cuando un acta no lo menciona (es el caso de cualquier acta incompleta,
+  y el dictamen manual del usuario sigue disponible); no dispara la lectura por PDF (esa solo corre si el texto no
+  se pudo leer del todo). La propuesta se sigue revisando antes de guardar.
+- **Actas ya leídas:** `acta_cache` guarda lo extraído por URL de acta, así que las que ya se leyeron con Opus no se
+  vuelven a leer ni a pagar; solo las nuevas usan Sonnet.
+- **Volver a Opus sin tocar código:** en Vercel define `ACTA_TEXTO_MODELO=claude-opus-5` (y, si quieres,
+  `ACTA_TEXTO_ESFUERZO=medium`) y vuelve a desplegar. Son opcionales: sin ellas rige el default de
+  `AnthropicConfig` en `config/settings.py`. (El prompt V3 se mantiene; volver también al V2 sí requiere código.)
+
 ## Comparar modelos (pestaña "Comparar modelos" / `POST /api/comparar_config`)
 
 Para bajar el costo sin perder calidad hay que poder **medir la calidad**: esta pestaña convierte el
 cambio de modelo/esfuerzo en una prueba. Por cada CO toma la acta que leería producción (ver "Qué acta se lee de cada CO"), la descarga y la lee con
 OCR UNA vez, y corre la extracción de producción (`analizar_acta_desde_texto`, mismo prompt y mismo
-código) sobre ese MISMO texto con la configuración actual y con 1-3 candidatas (Opus 5.5, Sonnet 5.5,
-distintos esfuerzos — `CONFIGS_CANDIDATAS` en `core/services/comparador.py`; Haiku 4.5 queda fuera
-porque no acepta `effort`). Compara los 12 campos técnicos (`observaciones`/`supuestos` son texto libre
+código) sobre ese MISMO texto con la configuración actual (la de producción: hoy Sonnet 5.5 · medio · V3) y con
+1-3 candidatas (Opus 5 como control de calidad, Opus 5.5, otros esfuerzos — `CONFIGS_CANDIDATAS` en
+`core/services/comparador.py`; Haiku 4.5 queda fuera porque no acepta `effort`). Compara los 12 campos técnicos (`observaciones`/`supuestos` son texto libre
 y no cuentan) y muestra por candidata: campos que coinciden, actas idénticas, fallos, costo frente a la
 actual y tiempo.
 
@@ -299,8 +321,8 @@ actual y tiempo.
   **V3** (`ACTA_EXTRACTION_PROMPT_V3`) es V2 pidiendo solo el JSON: es el que usa producción (2026-10-01) para
   leer las actas por TEXTO. En la prueba con Opus 5 / esfuerzo medio salieron 3 de 3 actas idénticas y ≈ −11 %
   de costo. La lectura por PDF (rara: solo si el texto no se pudo extraer) sigue con V2 porque el cambio no se midió
-  sobre PDF. La candidata `opus-5-prompt-anterior` es un control: Opus 5 con V2; sirve para volver a confirmar, con
-  más actas, que quitar el RESUMEN no cambió lo extraído.
+  sobre PDF. La candidata `opus-5-antes` es el control de calidad: la producción de antes, exacta (Opus 5 · medio · V2);
+  `opus-5-medio` es Opus 5 con el prompt de ahora, para separar el efecto del modelo del del prompt.
 - Una acta por llamada (cabe en los 60 s de Vercel); las candidatas corren en paralelo en hilos. Igual que
   producción, si el acta elegida no se puede descargar o leer prueba la siguiente (mientras quede tiempo) y lo
   avisa (`omitidas`). Presupuesto de 55 s: lo que quede tras leer el acta es el tiempo de Claude (un solo

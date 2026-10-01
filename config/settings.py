@@ -29,6 +29,13 @@ class AnthropicConfig:
     model: str = "claude-opus-5"
     max_tokens: int = 2000
     effort: str = "medium"
+    # Lectura de actas por TEXTO (OCR) — la llamada más frecuente y la que más gasta. Dinovi decidió el
+    # 2026-10-01 pasarla a Sonnet 5.5: ≈ −62 % por acta frente a Opus 5 en "Comparar modelos" (3 actas, con el
+    # prompt V3: 35 de 36 campos iguales, solo dejó vacío ubicacion_medida en una). El resto de las llamadas
+    # (acta por PDF, operador de red, certificados) sigue con `model`/`effort`: no se midieron con Sonnet.
+    # Para volver a Opus sin tocar código: variables de entorno ACTA_TEXTO_MODELO / ACTA_TEXTO_ESFUERZO.
+    model_acta_texto: str = "claude-sonnet-5-5"
+    effort_acta_texto: str = "medium"
 
 
 @dataclass(frozen=True)
@@ -45,7 +52,13 @@ class GoogleSheetsConfig:
 
 
 def cargar_anthropic_config() -> AnthropicConfig:
-    return AnthropicConfig(api_key=_requerida("ANTHROPIC_API_KEY"))
+    # ACTA_TEXTO_MODELO / ACTA_TEXTO_ESFUERZO son OPCIONALES: sin ellas rige el default de AnthropicConfig.
+    cambios = {}
+    if os.environ.get("ACTA_TEXTO_MODELO"):
+        cambios["model_acta_texto"] = os.environ["ACTA_TEXTO_MODELO"].strip()
+    if os.environ.get("ACTA_TEXTO_ESFUERZO"):
+        cambios["effort_acta_texto"] = os.environ["ACTA_TEXTO_ESFUERZO"].strip()
+    return AnthropicConfig(api_key=_requerida("ANTHROPIC_API_KEY"), **cambios)
 
 
 def cargar_metabase_config() -> MetabaseConfig:

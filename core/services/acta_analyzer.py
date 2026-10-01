@@ -44,7 +44,7 @@ def analizar_acta_desde_texto(
         + _instruccion_comun(meta)
         + f"\n\n--- TEXTO DEL ACTA (OCR) ---\n{texto_ocr}"
     )
-    body = llm.cuerpo_extraccion_acta(
+    body = llm.cuerpo_extraccion_acta_texto(
         system_prompt,
         [{"type": "text", "text": instruccion}],
     )

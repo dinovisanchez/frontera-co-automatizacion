@@ -36,13 +36,15 @@ ID_ACTUAL = "actual"
 PROMPT_PRODUCCION = "v3"
 PROMPTS = {"v2": ACTA_EXTRACTION_PROMPT_V2, "v3": ACTA_EXTRACTION_PROMPT_V3}
 
-# Candidatas ofrecidas (modelo, esfuerzo, prompt; sin "prompt" usan el de producción).
+# Candidatas ofrecidas (modelo, esfuerzo, prompt; sin "prompt" usan el de producción). La configuración "actual"
+# es la de producción para la lectura por TEXTO (config.settings: model_acta_texto / effort_acta_texto, hoy Sonnet
+# 5.5 · medio · V3); Opus 5 queda como CONTROL DE CALIDAD: era la producción antes del 2026-10-01.
 # Haiku 4.5 queda fuera a propósito: no acepta `effort`.
 CONFIGS_CANDIDATAS = {
-    "sonnet-5-5-medio": {"modelo": "claude-sonnet-5-5", "esfuerzo": "medium", "nombre": "Sonnet 5.5 · esfuerzo medio"},
-    # Control: el mismo Opus 5 de producción pero con el prompt anterior (con RESUMEN). Si sale idéntico a la
-    # actual en muchas actas, confirma que quitar el RESUMEN no cambió lo extraído.
-    "opus-5-prompt-anterior": {"modelo": "claude-opus-5", "esfuerzo": "medium", "prompt": "v2", "nombre": "Opus 5 · prompt anterior (con RESUMEN)"},
+    # Producción de antes, exacta (Opus 5 · medio · prompt con RESUMEN): la referencia para saber si Sonnet pierde algo.
+    "opus-5-antes": {"modelo": "claude-opus-5", "esfuerzo": "medium", "prompt": "v2", "nombre": "Opus 5 · como producción de antes (con RESUMEN)"},
+    # Mismo Opus 5 pero con el prompt de ahora (V3): separa el efecto del modelo del efecto del prompt.
+    "opus-5-medio": {"modelo": "claude-opus-5", "esfuerzo": "medium", "nombre": "Opus 5 · esfuerzo medio"},
     "sonnet-5-5-bajo": {"modelo": "claude-sonnet-5-5", "esfuerzo": "low", "nombre": "Sonnet 5.5 · esfuerzo bajo"},
     "opus-5-bajo": {"modelo": "claude-opus-5", "esfuerzo": "low", "nombre": "Opus 5 · esfuerzo bajo"},
     "opus-5-5-medio": {"modelo": "claude-opus-5-5", "esfuerzo": "medium", "nombre": "Opus 5.5 · esfuerzo medio"},
@@ -139,9 +141,9 @@ def _extraer(
     tokens = {
         k: int(sum(r.get(k) or 0 for r in ok)) for k in ("entrada", "escritura_cache", "lectura_cache", "salida", "razonamiento")
     }
-    costo = sum(costo_usd(cfg.model, r.get("entrada") or 0, r.get("escritura_cache") or 0, r.get("lectura_cache") or 0, r.get("salida") or 0) or 0 for r in ok)
+    costo = sum(costo_usd(cfg.model_acta_texto, r.get("entrada") or 0, r.get("escritura_cache") or 0, r.get("lectura_cache") or 0, r.get("salida") or 0) or 0 for r in ok)
     return {
-        "id": config_id, "modelo": cfg.model, "esfuerzo": cfg.effort,
+        "id": config_id, "modelo": cfg.model_acta_texto, "esfuerzo": cfg.effort_acta_texto,
         "ok": spec is not None, "error": error, "spec": spec,
         "segundos": round(time.monotonic() - inicio, 1), "tokens": tokens, "costo_usd": round(costo, 6),
         "stop_reason": ok[0].get("stop_reason") if ok else None, "registros": registros,
@@ -155,7 +157,7 @@ def comparar_acta_texto(
     configs = [(ID_ACTUAL, cfg_actual, PROMPT_PRODUCCION)]
     for cid in ids_candidatas:
         c = CONFIGS_CANDIDATAS[cid]
-        configs.append((cid, replace(cfg_actual, model=c["modelo"], effort=c["esfuerzo"]), c.get("prompt", PROMPT_PRODUCCION)))
+        configs.append((cid, replace(cfg_actual, model_acta_texto=c["modelo"], effort_acta_texto=c["esfuerzo"]), c.get("prompt", PROMPT_PRODUCCION)))
 
     with ThreadPoolExecutor(max_workers=len(configs)) as pool:
         resultados = list(pool.map(lambda c: _extraer(meta, texto_ocr, c[1], c[0], timeout_seg, c[2]), configs))

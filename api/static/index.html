@@ -1618,14 +1618,14 @@
     // ---------- Comparar modelos: ¿una configuración más barata extrae lo mismo? (/api/comparar_config) ----------
     // Los ids deben coincidir con CONFIGS_CANDIDATAS de core/services/comparador.py.
     var COMP_CANDIDATAS = [
-      { id: 'sonnet-5-5-medio', nombre: 'Sonnet 5.5 · esfuerzo medio', nota: '60 % más barato por token; con el prompt actual llenó nivel_tension en 3 de 3 actas (pocas: falta confirmar)', marcada: true },
-      { id: 'opus-5-prompt-anterior', nombre: 'Opus 5 · prompt anterior (con RESUMEN)', nota: 'control: confirma que quitar el RESUMEN no cambió lo extraído', marcada: true },
-      { id: 'sonnet-5-5-bajo', nombre: 'Sonnet 5.5 · esfuerzo bajo', nota: '60 % más barato y menos razonamiento' },
-      { id: 'opus-5-bajo', nombre: 'Opus 5 · esfuerzo bajo', nota: 'probado: ahorra solo 1 punto más y no vale el riesgo' },
+      { id: 'opus-5-antes', nombre: 'Opus 5 · como producción de antes (con RESUMEN)', nota: 'control de calidad: lo que se usaba antes de pasar a Sonnet. Cuesta ≈ 2,6× la actual', marcada: true },
+      { id: 'opus-5-medio', nombre: 'Opus 5 · esfuerzo medio', nota: 'Opus con el prompt de ahora: separa el efecto del modelo del efecto del prompt' },
+      { id: 'sonnet-5-5-bajo', nombre: 'Sonnet 5.5 · esfuerzo bajo', nota: 'menos razonamiento; falta medir si baja más el costo' },
+      { id: 'opus-5-bajo', nombre: 'Opus 5 · esfuerzo bajo', nota: 'probado: ahorra solo 1 punto más' },
       { id: 'opus-5-5-medio', nombre: 'Opus 5.5 · esfuerzo medio', nota: 'probado: coincide pero NO ahorra (razona más)' },
       { id: 'opus-5-5-bajo', nombre: 'Opus 5.5 · esfuerzo bajo', nota: 'probado: tampoco ahorra' }
     ];
-    var COMP_COSTO_ESTIMADO_POR_LLAMADA = 0.05;  // USD, típico de la configuración actual; el real queda en "Consumo"
+    var COMP_COSTO_ESTIMADO_POR_LLAMADA = 0.04;  // USD, promedio entre la actual (Sonnet, ≈ $0,02) y un control Opus (≈ $0,05); el real queda en "Consumo"
     var compEntradas = [];  // una por acta: { co, data | error }
 
     document.getElementById('candidatasComparar').innerHTML = COMP_CANDIDATAS.map(function (c) {
