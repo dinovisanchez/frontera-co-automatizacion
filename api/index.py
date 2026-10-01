@@ -14,6 +14,7 @@ from api.actas_start import bp as actas_start_bp
 from api.actas_status import bp as actas_status_bp
 from api.actas_step import bp as actas_step_bp
 from api.analizar_alcance import bp as analizar_alcance_bp
+from api.consumo_resumen import bp as consumo_resumen_bp
 from api.cron_reintentos import bp as cron_reintentos_bp
 from api.equipos_resumen import bp as equipos_resumen_bp
 from api.guardar_alcance import bp as guardar_alcance_bp
@@ -36,6 +37,7 @@ app.register_blueprint(lote_start_bp)
 app.register_blueprint(lote_step_bp)
 app.register_blueprint(lote_status_bp)
 app.register_blueprint(equipos_resumen_bp)
+app.register_blueprint(consumo_resumen_bp)
 
 _FRONTEND_HTML = (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
 

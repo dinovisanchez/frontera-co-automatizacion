@@ -10,7 +10,7 @@ campos, vía el LLM.
 import base64
 from dataclasses import dataclass
 
-from core.data_sources.llm_client import AnthropicClient
+from core.data_sources.llm_client import AnthropicClient, contexto_llamada
 from core.prompts.acta_extraction_prompt import ACTA_EXTRACTION_PROMPT_V2
 from core.validators.alcance_schema import RespuestaActa, normalizar_spec_acta, parsear_respuesta_alcance
 
@@ -43,7 +43,7 @@ def analizar_acta_desde_texto(meta: MetadatosActa, texto_ocr: str, llm: Anthropi
         ACTA_EXTRACTION_PROMPT_V2,
         [{"type": "text", "text": instruccion}],
     )
-    return _ejecutar(body, llm)
+    return _ejecutar(body, llm, meta, "acta_texto")
 
 
 def analizar_acta_desde_pdf(meta: MetadatosActa, pdf_bytes: bytes, llm: AnthropicClient) -> RespuestaActa:
@@ -68,11 +68,13 @@ def analizar_acta_desde_pdf(meta: MetadatosActa, pdf_bytes: bytes, llm: Anthropi
             {"type": "text", "text": instruccion},
         ],
     )
-    return _ejecutar(body, llm)
+    return _ejecutar(body, llm, meta, "acta_pdf")
 
 
-def _ejecutar(body: dict, llm: AnthropicClient) -> RespuestaActa:
-    texto_respuesta = llm.enviar(body)
+def _ejecutar(body: dict, llm: AnthropicClient, meta: MetadatosActa, tipo: str) -> RespuestaActa:
+    # La etiqueta solo sirve para el registro de consumo (core/services/consumo.py).
+    with contexto_llamada(llm, co=meta.co, tipo=tipo, acta=meta.tipo_acta):
+        texto_respuesta = llm.enviar(body)
     resultado = parsear_respuesta_alcance(texto_respuesta)
     if resultado.spec is not None:
         resultado.spec = normalizar_spec_acta(resultado.spec)

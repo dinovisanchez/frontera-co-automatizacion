@@ -234,6 +234,25 @@ se pierde progreso ya combinado.
 `/api/opex_resolver` sí es síncrono: no llama al LLM ni descarga nada, solo lee hojas y hace
 fuzzy-match de texto en memoria — no hay riesgo de timeout ahí.
 
+## Consumo de la API de Claude (pestaña "Consumo" / hoja "PyConsumo")
+
+Dinovi, 2026-10-01: la app no medía lo que gastaba en Claude, así que todo costo era un estimado.
+Ahora **cada llamada a Claude deja una fila** en la pestaña `PyConsumo` de la hoja de Alcances (se
+crea sola): tokens de entrada / de caché / de salida / de razonamiento, `stop_reason`, intentos y
+cuántos fallaron, segundos, modelo, esfuerzo, el CO y el tipo de llamada (`acta_texto`, `acta_pdf`,
+`operador`, `certificado`), el origen (`individual` | `lote`) y el costo estimado. La pestaña
+**Consumo** de la pantalla (`GET /api/consumo_resumen[?desde=AAAA-MM-DD]`) lo resume: costo medio por
+CO, proyección para 100/400 COs, aciertos del caché, respuestas cortadas por `max_tokens`, reintentos,
+y una tabla por modelo+esfuerzo para comparar el antes y el después de un cambio.
+
+- El registro es "mejor esfuerzo": si Sheets falla, se anota en el log de Vercel y la extracción
+  sigue igual (`core/data_sources/llm_client.py` → `_registrar`, `core/services/consumo.py`).
+- El costo es una **estimación** con `PRECIOS_USD_POR_MTOK` (`config/settings.py`, precios oficiales
+  leídos el 2026-10-01); si cambian los precios o el modelo, se actualiza ahí. El valor exacto de la
+  factura está en la consola de Anthropic.
+- Mide, no ahorra: sirve para decidir con datos (¿el caché funciona?, ¿hay respuestas cortadas o
+  reintentos pagados?, ¿cuánto cuesta un CO?) antes de tocar modelo o esfuerzo.
+
 ## Correr localmente
 
 ```bash

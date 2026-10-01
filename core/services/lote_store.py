@@ -176,6 +176,8 @@ class LoteStore:
         return [(i, fila) for i, fila in enumerate(valores[1:], start=2) if fila and fila[0] == lote_id]
 
     def siguiente_paso(self, llm, drive_cfg, metabase, lote_id: str) -> dict:
+        if hasattr(llm, "contexto"):
+            llm.contexto = {**llm.contexto, "origen": "lote"}  # para separar el consumo de los lotes en PyConsumo
         hoja = self._hoja()
         filas = self._filas_del_lote(hoja, lote_id)
         if not filas:

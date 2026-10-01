@@ -8,6 +8,7 @@ from config.settings import cargar_anthropic_config, cargar_metabase_config, car
 from core.data_sources.llm_client import AnthropicClient
 from core.data_sources.metabase_client import MetabaseClient
 from core.data_sources.sheets_client import SheetsClient
+from core.services.consumo import get_consumo_store
 from core.services.job_store import JobStore
 
 
@@ -24,6 +25,7 @@ def construir_dependencias(requiere_metabase: bool = True) -> Dependencias:
     sheets_cfg = cargar_sheets_config()
     sheets = SheetsClient(sheets_cfg)
     llm = AnthropicClient(cargar_anthropic_config())
+    llm.registrador = get_consumo_store(sheets).registrar  # una fila por llamada a Claude (consumo.py)
 
     metabase = None
     try:
