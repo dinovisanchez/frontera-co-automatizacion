@@ -18,9 +18,16 @@ from core.services import acta_downloader, acta_ocr
 from core.services.acta_analyzer import MetadatosActa, analizar_acta_desde_pdf, analizar_acta_desde_texto
 from core.services.acta_cache import get_acta_cache
 from core.services.job_store import EstadoJob
-from core.utils import normalizar_codigo
+from core.utils import normalizar_codigo, quitar_acentos
 
-MAX_ACTAS_A_ESCANEAR = 5  # Codigo.gs línea 3251 — límite de costo/tiempo, no de corrección
+# Regla de selección (Dinovi, 2026-10-01: "no revises todas las actas"): UNA sola acta por CO —
+# la INFR de una visita exitosa; si no hay INFR exitosa, la más reciente de cualquier tipo que
+# sea exitosa. Antes se leían hasta 5 (la más nueva primero) hasta completar los campos, lo que
+# multiplicaba el costo de Claude por 2-5 y no era la regla de negocio.
+MAX_ACTAS_A_ESCANEAR = 1
+TIPO_ACTA_PREFERIDA = "INFR"
+COLUMNA_ESTADO_VISITA = "estado_visita"  # columna de la Card 82534 de Metabase
+ESTADO_VISITA_EXITOSA = "Cierre Exitoso"
 # "Bono": se toman si alguna acta los trae, pero no detienen el escaneo por sí solos.
 _CAMPOS_BONO = ("relacion_tc", "relacion_tp", "montaje_tc", "totalizador_amperios", "conductor_calibre")
 
@@ -42,22 +49,51 @@ def hay_acta_instalacion(filas_metabase_co: list[dict]) -> bool:
     )
 
 
-def preparar_actas_pendientes(co: str, filas_metabase_co: list[dict]) -> list[dict]:
-    """Puerto de la deduplicación por act_pdf_url + orden por fecha desc (Codigo.gs
-    líneas 3214-3237): una URL de acta puede repetirse una vez por equipo de esa visita.
-    """
+def _normalizar_estado(s) -> str:
+    return " ".join(quitar_acentos(str(s or "")).lower().split())
+
+
+def es_visita_exitosa(fila: dict) -> bool:
+    return _normalizar_estado(fila.get(COLUMNA_ESTADO_VISITA)) == _normalizar_estado(ESTADO_VISITA_EXITOSA)
+
+
+def _filas_con_acta(filas_metabase_co: list[dict]) -> list[dict]:
     filas = [
         r for r in filas_metabase_co
         if (r.get("service_type_id") or "").upper() in TIPOS_ACTA_ALCANCE and r.get("act_pdf_url")
     ]
-    por_url: dict[str, dict] = {}
-    for r in filas:
-        url = r["act_pdf_url"]
-        if url not in por_url or (r.get("fecha_visita") or "") > (por_url[url].get("fecha_visita") or ""):
-            por_url[url] = r
+    # Si la columna ni siquiera existe, filtrar por ella descartaría TODAS las actas en silencio y
+    # cada CO parecería "sin actas": mejor fallar con el motivo a la vista.
+    if filas and not any(COLUMNA_ESTADO_VISITA in r for r in filas):
+        raise RuntimeError(f'La tarjeta de Metabase no trae la columna "{COLUMNA_ESTADO_VISITA}" (columnas: {sorted(filas[0])}).')
+    return filas
 
-    ordenadas = sorted(por_url.values(), key=lambda r: r.get("fecha_visita") or "", reverse=True)
-    return ordenadas[:MAX_ACTAS_A_ESCANEAR]
+
+def seleccionar_acta(filas_metabase_co: list[dict]) -> dict | None:
+    """La ÚNICA acta que se lee de un CO: la INFR exitosa más reciente; si no hay INFR exitosa, la
+    exitosa más reciente de cualquier tipo; None si ninguna visita con acta fue exitosa."""
+    exitosas = [r for r in _filas_con_acta(filas_metabase_co) if es_visita_exitosa(r)]
+    infr = [r for r in exitosas if (r.get("service_type_id") or "").upper() == TIPO_ACTA_PREFERIDA]
+    elegibles = infr or exitosas
+    return max(elegibles, key=lambda r: r.get("fecha_visita") or "") if elegibles else None
+
+
+def preparar_actas_pendientes(co: str, filas_metabase_co: list[dict]) -> list[dict]:
+    """Lista de actas por leer del CO: [la acta elegida] o [] (ver seleccionar_acta). Se conserva
+    como lista porque el job de actas (actas_pendientes) y sus llamadores trabajan sobre una cola."""
+    acta = seleccionar_acta(filas_metabase_co)
+    return [acta] if acta else []
+
+
+def motivo_sin_acta(co: str, filas_metabase_co: list[dict]) -> str:
+    """Mensaje cuando preparar_actas_pendientes devuelve []: por qué no hay acta que leer. Empieza con
+    "no tiene ninguna acta" porque el frontend lo reconoce para pasar al modo "sin actas"."""
+    filas = _filas_con_acta(filas_metabase_co)
+    if not filas:
+        return f'"{co}" no tiene ninguna acta {"/".join(sorted(TIPOS_ACTA_ALCANCE))} con act_pdf_url.'
+    estados = sorted({str(r.get(COLUMNA_ESTADO_VISITA) or "(vacío)") for r in filas})
+    return (f'"{co}" no tiene ninguna acta de una visita exitosa ({COLUMNA_ESTADO_VISITA} = "{ESTADO_VISITA_EXITOSA}"): '
+            f'tiene {len(filas)} fila(s) con acta, con estado(s): {", ".join(estados)}.')
 
 
 def _faltan_campos(spec_combinado: dict) -> bool:

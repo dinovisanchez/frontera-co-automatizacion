@@ -133,8 +133,9 @@ def api(monkeypatch):
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
     filas = [
-        {"bia_code": "CO0100002908", "service_type_id": "VIPE", "fecha_visita": "2026-02-01", "act_pdf_url": "https://x/reciente.pdf"},
-        {"bia_code": "CO0100002908", "service_type_id": "INST", "fecha_visita": "2025-01-01", "act_pdf_url": "https://x/vieja.pdf"},
+        {"bia_code": "CO0100002908", "service_type_id": "VIPE", "fecha_visita": "2026-02-01", "act_pdf_url": "https://x/reciente.pdf", "estado_visita": "Cierre Exitoso"},
+        {"bia_code": "CO0100002908", "service_type_id": "INST", "fecha_visita": "2025-01-01", "act_pdf_url": "https://x/vieja.pdf", "estado_visita": "Cierre Exitoso"},
+        {"bia_code": "CO0500000005", "service_type_id": "INFR", "fecha_visita": "2026-03-01", "act_pdf_url": "https://x/fallida.pdf", "estado_visita": "Cierre Fallido"},
     ]
     monkeypatch.setattr(comparar_config, "construir_dependencias", lambda: Deps(filas))
     monkeypatch.setattr(comparar_config.acta_downloader, "descargar_pdf_acta", lambda url: ResultadoDescarga(ok=True, bytes_pdf=b"%PDF"))
@@ -151,7 +152,7 @@ def test_endpoint_compara_el_acta_mas_reciente_y_guarda_el_consumo(api, monkeypa
     resp = cliente.post("/api/comparar_config", json={"co": "co0100002908", "indice": 0, "candidatas": ["opus-5-5-medio"]})
 
     cuerpo = resp.get_json()
-    assert resp.status_code == 200 and cuerpo["total_actas"] == 2
+    assert resp.status_code == 200 and cuerpo["total_actas"] == 1  # producción lee UNA acta por CO
     assert cuerpo["acta"] == {"indice": 0, "tipo": "VIPE", "fecha": "2026-02-01", "url": "https://x/reciente.pdf"}
     assert cuerpo["comparaciones"]["opus-5-5-medio"]["coinciden"] == 12 and cuerpo["ocr_caracteres"] == len("texto del acta")
     assert all("registros" not in c for c in cuerpo["configuraciones"])
@@ -159,12 +160,20 @@ def test_endpoint_compara_el_acta_mas_reciente_y_guarda_el_consumo(api, monkeypa
     assert all(r["co"] == "CO0100002908" and r["origen"] == "comparacion" for r in guardados)
 
 
-def test_endpoint_indice_mayor_al_de_actas_disponibles(api):
+def test_endpoint_solo_existe_el_indice_0_porque_se_lee_una_acta(api):
     cliente, _ = api
 
-    cuerpo = cliente.post("/api/comparar_config", json={"co": "CO0100002908", "indice": 3, "candidatas": ["opus-5-5-medio"]}).get_json()
+    assert cliente.post("/api/comparar_config", json={"co": "CO0100002908", "indice": 1, "candidatas": ["opus-5-5-medio"]}).status_code == 400
 
-    assert cuerpo == {"co": "CO0100002908", "total_actas": 2, "sin_acta": True}
+
+def test_endpoint_co_sin_visita_exitosa_explica_el_motivo(api):
+    cliente, _ = api
+
+    resp = cliente.post("/api/comparar_config", json={"co": "CO0500000005", "candidatas": ["opus-5-5-medio"]})
+
+    assert resp.status_code == 404
+    error = resp.get_json()["error"]
+    assert error.startswith('"CO0500000005" no tiene ninguna acta') and "Cierre Fallido" in error  # el frontend reconoce el prefijo
 
 
 @pytest.mark.parametrize("body", [

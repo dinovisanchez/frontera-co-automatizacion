@@ -157,7 +157,7 @@ class AnthropicClient:
         cambiar ninguno por defecto.
 
         `system_prompt` (ACTA_EXTRACTION_PROMPT_V2, ~2500 tokens) es idéntico en cada llamada
-        de un mismo job — hasta 5 actas por CO, cada una con su propio intento texto+PDF — así
+        de un mismo job — (antes hasta 5 actas por CO; hoy UNA, ver alcance_combiner.seleccionar_acta) — así
         que va con `cache_control: ephemeral` para que Anthropic lo facture como cache-hit
         (~90% más barato) en vez de reprocesarlo entero cada vez.
         """
