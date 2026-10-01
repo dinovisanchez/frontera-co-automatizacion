@@ -207,18 +207,25 @@ todos en una sola `Flask(__name__)`, y `pyproject.toml` declara
 
 ## Qué acta se lee de cada CO (Dinovi, 2026-10-01)
 
-**UNA sola acta por CO**, elegida por `alcance_combiner.seleccionar_acta`:
+**UNA sola acta por CO**, elegida por `alcance_combiner.seleccionar_actas_ordenadas`:
 1. La **INFR de una visita exitosa** (la más reciente si hay varias).
 2. Si no hay INFR exitosa, la **más reciente de cualquier tipo** (VIPE/NOTE/INST/…) que sea exitosa.
 3. Si ninguna visita con acta fue exitosa, el CO queda "sin acta" (el frontend pasa al modo "sin actas"
    y usa la hoja maestra / Data cambio NT; el mensaje lista los `estado_visita` que sí encontró).
+
+**Respaldo SOLO por falla técnica.** La cola de actas va en ese orden de preferencia (INFR primero, luego
+las demás de la más reciente a la más vieja; máx. `MAX_ACTAS_A_ESCANEAR` = 3 candidatas) y se lee la
+primera. Si no se pudo leer — el PDF no se descarga o es inválido, pesa demasiado, el OCR de Drive falla,
+o el acta no trae ningún dato útil — se prueba la siguiente candidata. En cuanto una acta se lee bien
+termina el CO, **aunque falten campos** (nunca se sigue leyendo por campos faltantes). En la muestra de
+la primera prueba, 3 de 10 COs tenían un acta ilegible, y sin este respaldo habrían quedado sin nada.
 
 "Exitosa" = la columna `estado_visita` de la Card 82534 de Metabase vale `Cierre Exitoso` (se compara sin
 importar mayúsculas, acentos ni espacios). Si la tarjeta no trae esa columna se falla con un error claro
 en vez de dejar todos los CO sin acta en silencio.
 
 Antes se leían hasta 5 actas, la más nueva primero, hasta completar los campos obligatorios: eso
-multiplicaba por 2-5 las llamadas a Claude. **Consecuencia aceptada:** lo que esa única acta no traiga
+multiplicaba por 2-5 las llamadas a Claude. **Consecuencia aceptada:** lo que el acta leída no traiga
 (p. ej. la relación del TC) queda vacío en vez de completarse con una acta más vieja. No se tocó cómo se
 resuelve el operador de red (`operator_resolver.py`, que sigue usando el acta con PDF más reciente).
 
@@ -287,7 +294,10 @@ actual y tiempo.
 - **La configuración actual es la referencia, no la verdad.** Una diferencia puede ser un error de la
   candidata o uno de la actual: se revisa contra el acta (la pestaña trae el enlace). La herramienta
   no decide sola.
-- Una acta por llamada (cabe en los 60 s de Vercel); las candidatas corren en paralelo en hilos.
+- Una acta por llamada (cabe en los 60 s de Vercel); las candidatas corren en paralelo en hilos. Igual que
+  producción, si el acta elegida no se puede descargar o leer prueba la siguiente (mientras quede tiempo) y lo
+  avisa (`omitidas`). Presupuesto de 55 s: lo que quede tras leer el acta es el tiempo de Claude (un solo
+  intento) y, si no alcanza, no se llama a Claude.
 - **Gasta API** (≈ una extracción por configuración y acta; la pestaña estima el costo y pide
   confirmación). No escribe en las hojas de trabajo; solo deja el consumo en `PyConsumo` con
   origen `comparacion`. Los resultados viven en la pantalla: si cierras la pestaña se pierden (el

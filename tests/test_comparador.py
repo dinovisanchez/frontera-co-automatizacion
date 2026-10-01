@@ -152,7 +152,7 @@ def test_endpoint_compara_el_acta_mas_reciente_y_guarda_el_consumo(api, monkeypa
     resp = cliente.post("/api/comparar_config", json={"co": "co0100002908", "indice": 0, "candidatas": ["opus-5-5-medio"]})
 
     cuerpo = resp.get_json()
-    assert resp.status_code == 200 and cuerpo["total_actas"] == 1  # producción lee UNA acta por CO
+    assert resp.status_code == 200 and cuerpo["total_actas"] == 2 and cuerpo["omitidas"] == []  # 2 candidatas; se usa la primera
     assert cuerpo["acta"] == {"indice": 0, "tipo": "VIPE", "fecha": "2026-02-01", "url": "https://x/reciente.pdf"}
     assert cuerpo["comparaciones"]["opus-5-5-medio"]["coinciden"] == 12 and cuerpo["ocr_caracteres"] == len("texto del acta")
     assert all("registros" not in c for c in cuerpo["configuraciones"])
@@ -160,10 +160,66 @@ def test_endpoint_compara_el_acta_mas_reciente_y_guarda_el_consumo(api, monkeypa
     assert all(r["co"] == "CO0100002908" and r["origen"] == "comparacion" for r in guardados)
 
 
-def test_endpoint_solo_existe_el_indice_0_porque_se_lee_una_acta(api):
+def test_endpoint_rechaza_un_indice_fuera_del_tope_de_candidatas(api):
     cliente, _ = api
 
-    assert cliente.post("/api/comparar_config", json={"co": "CO0100002908", "indice": 1, "candidatas": ["opus-5-5-medio"]}).status_code == 400
+    assert cliente.post("/api/comparar_config", json={"co": "CO0100002908", "indice": 3, "candidatas": ["opus-5-5-medio"]}).status_code == 400
+
+
+def test_endpoint_indice_mayor_al_de_candidatas_disponibles(api):
+    cliente, _ = api
+
+    cuerpo = cliente.post("/api/comparar_config", json={"co": "CO0100002908", "indice": 2, "candidatas": ["opus-5-5-medio"]}).get_json()
+
+    assert cuerpo == {"co": "CO0100002908", "total_actas": 2, "sin_acta": True}
+
+
+def test_si_la_acta_elegida_no_se_puede_leer_se_compara_con_la_siguiente(api, monkeypatch):
+    from api import comparar_config
+    from core.services.acta_downloader import ResultadoDescarga
+
+    cliente, _ = api
+    monkeypatch.setattr(
+        comparar_config.acta_downloader, "descargar_pdf_acta",
+        lambda url: ResultadoDescarga(ok=False, motivo_fallo="no es un PDF válido") if "reciente" in url else ResultadoDescarga(ok=True, bytes_pdf=b"%PDF"),
+    )
+    _claude_simulado(monkeypatch, {"claude-opus-5": (_json(tipo_medida_actual="directa"), 900), "claude-opus-5-5": (_json(tipo_medida_actual="directa"), 700)})
+
+    cuerpo = cliente.post("/api/comparar_config", json={"co": "CO0100002908", "candidatas": ["opus-5-5-medio"]}).get_json()
+
+    assert cuerpo["acta"]["tipo"] == "INST" and cuerpo["acta"]["url"] == "https://x/vieja.pdf"  # VIPE falló → la siguiente
+    assert [(o["tipo"], o["motivo"]) for o in cuerpo["omitidas"]] == [("VIPE", "No se pudo descargar: no es un PDF válido")]
+    assert cuerpo["comparaciones"]["opus-5-5-medio"]["coinciden"] == 12
+
+
+def test_si_ninguna_candidata_se_puede_leer_no_se_llama_a_claude(api, monkeypatch):
+    from api import comparar_config
+    from core.services.acta_downloader import ResultadoDescarga
+    from core.services.acta_ocr import OcrResultado
+
+    cliente, guardados = api
+    monkeypatch.setattr(comparar_config.acta_downloader, "descargar_pdf_acta", lambda url: ResultadoDescarga(ok=True, bytes_pdf=b"%PDF"))
+    monkeypatch.setattr(comparar_config.acta_ocr, "ocr_texto_desde_bytes", lambda b, cfg: OcrResultado(ok=False, motivo_fallo="read timed out"))
+    monkeypatch.setattr(llm_client.requests, "post", lambda *a, **k: pytest.fail("no debía llamar a Claude"))
+
+    cuerpo = cliente.post("/api/comparar_config", json={"co": "CO0100002908", "candidatas": ["opus-5-5-medio"]}).get_json()
+
+    assert "No se pudo leer ninguna acta candidata" in cuerpo["error"] and len(cuerpo["omitidas"]) == 2 and "read timed out" in cuerpo["error"]
+    assert guardados == []
+
+
+def test_no_se_prueba_otra_candidata_si_ya_no_queda_tiempo(api, monkeypatch):
+    from api import comparar_config
+    from core.services.acta_ocr import OcrResultado
+
+    cliente, _ = api
+    llamadas = []
+    monkeypatch.setattr(comparar_config.acta_ocr, "ocr_texto_desde_bytes", lambda b, cfg: (llamadas.append(1), OcrResultado(ok=False, motivo_fallo="timeout"))[1])
+    monkeypatch.setattr(comparar_config.time, "monotonic", _reloj(0.0, 40.0))  # el primer OCR se comió 40 s
+
+    cuerpo = cliente.post("/api/comparar_config", json={"co": "CO0100002908", "candidatas": ["opus-5-5-medio"]}).get_json()
+
+    assert len(llamadas) == 1 and len(cuerpo["omitidas"]) == 1 and "reintenta este CO" in cuerpo["error"]
 
 
 def test_endpoint_co_sin_visita_exitosa_explica_el_motivo(api):

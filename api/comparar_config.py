@@ -2,9 +2,10 @@
 actual (modelo + esfuerzo) y con 1-3 candidatas, sobre el MISMO texto OCR. Ver comparador.py.
 
 Body: {"co": "CO0100002908", "indice": 0, "candidatas": ["opus-5-5-medio", "sonnet-5-5-medio"]}
-  `indice`: 0 = la acta que producción leería para el CO (la INFR exitosa, o la más reciente exitosa;
-  ver alcance_combiner.seleccionar_acta). Producción lee UNA acta por CO, así que solo el 0 existe; se
-  conserva el parámetro por compatibilidad. Descarga + OCR + (1 + candidatas) llamadas a Claude en
+  `indice`: desde qué candidata empezar (0 = la que producción leería: la INFR exitosa o la más reciente
+  exitosa; ver alcance_combiner.seleccionar_actas_ordenadas). Igual que producción, si esa acta no se puede
+  descargar o leer (PDF inválido, muy grande, OCR caído) se prueba la siguiente candidata, mientras quede
+  tiempo; las omitidas vuelven en `omitidas`. Descarga + OCR + (1 + candidatas) llamadas a Claude en
   paralelo caben en los 60 s de Vercel.
 
 GASTA API de Claude (≈ una extracción por configuración); no guarda nada en las hojas de trabajo,
@@ -32,6 +33,7 @@ PRESUPUESTO_SEG = 55
 MARGEN_SEG = 5
 MIN_SEG_PARA_CLAUDE = 15
 MAX_SEG_POR_LLAMADA = 45
+UMBRAL_PROBAR_OTRA_ACTA_SEG = 25  # pasado este tiempo, un nuevo intento de descarga + OCR ya no cabe
 
 
 @bp.post("/api/comparar_config")
@@ -65,15 +67,26 @@ def comparar_config():
     if indice >= len(actas):
         return jsonify({"co": co, "total_actas": len(actas), "sin_acta": True})
 
-    fila = actas[indice]
-    acta = {"indice": indice, "tipo": fila.get("service_type_id"), "fecha": fila.get("fecha_visita"), "url": fila["act_pdf_url"]}
-
-    descarga = acta_downloader.descargar_pdf_acta(fila["act_pdf_url"])
-    if not descarga.ok:
-        return jsonify({"co": co, "total_actas": len(actas), "acta": acta, "error": f"No se pudo descargar el acta: {descarga.motivo_fallo}"})
-    ocr = acta_ocr.ocr_texto_desde_bytes(descarga.bytes_pdf, deps.drive_cfg)
-    if not ocr.ok:
-        return jsonify({"co": co, "total_actas": len(actas), "acta": acta, "error": f"El OCR del acta falló: {ocr.motivo_fallo}"})
+    # Falla técnica (descarga u OCR) → siguiente candidata, como en producción; solo mientras quede tiempo.
+    omitidas, fila, acta, ocr = [], None, None, None
+    for pos in range(indice, len(actas)):
+        if omitidas and time.monotonic() - inicio > UMBRAL_PROBAR_OTRA_ACTA_SEG:
+            break
+        candidata = actas[pos]
+        info = {"indice": pos, "tipo": candidata.get("service_type_id"), "fecha": candidata.get("fecha_visita"), "url": candidata["act_pdf_url"]}
+        descarga = acta_downloader.descargar_pdf_acta(candidata["act_pdf_url"])
+        if not descarga.ok:
+            omitidas.append({**info, "motivo": f"No se pudo descargar: {descarga.motivo_fallo}"})
+            continue
+        lectura = acta_ocr.ocr_texto_desde_bytes(descarga.bytes_pdf, deps.drive_cfg)
+        if not lectura.ok:
+            omitidas.append({**info, "motivo": f"El OCR falló: {lectura.motivo_fallo}"})
+            continue
+        fila, acta, ocr = candidata, info, lectura
+        break
+    if ocr is None:
+        detalle = "; ".join(f"{o['tipo']} {o['fecha']}: {o['motivo']}" for o in omitidas)
+        return jsonify({"co": co, "total_actas": len(actas), "omitidas": omitidas, "error": f"No se pudo leer ninguna acta candidata ({detalle}). Si quedó sin tiempo, reintenta este CO."})
 
     restante = PRESUPUESTO_SEG - (time.monotonic() - inicio)
     if restante < MIN_SEG_PARA_CLAUDE + MARGEN_SEG:
@@ -91,4 +104,4 @@ def comparar_config():
         for registro in cfg.pop("registros"):
             store.registrar({**registro, "co": co, "tipo": "acta_texto", "acta": acta["tipo"]})
 
-    return jsonify({"co": co, "total_actas": len(actas), "acta": acta, "ocr_caracteres": len(ocr.texto), **resultado})
+    return jsonify({"co": co, "total_actas": len(actas), "acta": acta, "omitidas": omitidas, "ocr_caracteres": len(ocr.texto), **resultado})
