@@ -216,3 +216,44 @@ def test_si_ninguna_candidata_se_puede_leer_el_job_termina_sin_datos(monkeypatch
 
     assert paso.completo is True and estado.spec_combinado == {} and estado.actas_usadas == [] and enviados == []
     assert len(estado.observaciones) == 2
+
+
+JSON_SUELTO = '```json\n{"relacion_tp": "13200/120", "observaciones": "Acta genérica sin datos técnicos"}\n```'  # un dato, ningún campo clave
+
+
+def test_una_acta_con_solo_datos_sueltos_no_basta_y_se_prueba_la_siguiente(monkeypatch):
+    """Caso del Hotel San Lázaro: la NOTE traía un dato suelto y ninguno clave; la LEGA siguiente traía todo. Antes la
+    NOTE contaba como lectura buena y el CO se quedaba sin datos; ahora se sigue hasta una que traiga algo clave."""
+    llm, enviados, descargadas = _entorno(monkeypatch, [JSON_SUELTO, JSON_PARCIAL])
+    estado = _job([fila("NOTE", "2025-04-29"), fila("LEGA", "2025-04-01"), fila("VIPE", "2025-02-26")])
+
+    paso1 = ac.procesar_siguiente_acta(estado, llm, drive_cfg=None, sheets=None)
+    assert paso1.completo is False and len(estado.actas_pendientes) == 2
+    assert "ninguno de los campos clave" in estado.observaciones[-1]
+    assert estado.spec_combinado.get("relacion_tp") == "13200/120"  # lo poco que trajo se conserva
+
+    paso2 = ac.procesar_siguiente_acta(estado, llm, drive_cfg=None, sheets=None)
+    assert paso2.completo is True and len(enviados) == 2  # la VIPE (tercera) NO se lee
+    assert [a["tipo"] for a in estado.actas_usadas] == ["NOTE", "LEGA"]
+    assert estado.spec_combinado["capacidad_instalada_kva"] == 75 and estado.actas_pendientes == []
+    assert len(descargadas) == 2
+
+
+def test_si_la_ultima_candidata_tampoco_trae_campos_clave_el_job_termina_con_lo_que_haya(monkeypatch):
+    llm, enviados, _ = _entorno(monkeypatch, [JSON_SUELTO])
+    estado = _job([fila("NOTE", "2025-04-29")])  # una sola candidata
+
+    paso = ac.procesar_siguiente_acta(estado, llm, drive_cfg=None, sheets=None)
+
+    assert paso.completo is True and len(enviados) == 1
+    assert [a["tipo"] for a in estado.actas_usadas] == ["NOTE"] and estado.spec_combinado.get("relacion_tp") == "13200/120"
+    assert not any("se prueba la siguiente" in o for o in estado.observaciones)  # no hay siguiente que anunciar
+
+
+def test_con_un_solo_campo_clave_ya_alcanza_para_dejar_de_buscar(monkeypatch):
+    llm, enviados, _ = _entorno(monkeypatch, ['```json\n{"trafo_uso": "compartido"}\n```'])
+    estado = _job([fila("INFR", "2025-06-01"), fila("VIPE", "2026-05-01")])
+
+    paso = ac.procesar_siguiente_acta(estado, llm, drive_cfg=None, sheets=None)
+
+    assert paso.completo is True and len(enviados) == 1 and estado.actas_pendientes == []
