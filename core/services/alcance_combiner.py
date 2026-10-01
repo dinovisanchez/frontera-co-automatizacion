@@ -27,8 +27,9 @@ from core.utils import normalizar_codigo, quitar_acentos
 # multiplicaba el costo de Claude por 2-5 y no era la regla de negocio. Las candidatas siguientes solo
 # entran en juego si la elegida no se puede leer (falla técnica), nunca por campos faltantes.
 # Se lee UNA acta por CO. Este tope es de actas CANDIDATAS que se prueban en orden de preferencia SOLO si
-# la anterior no se pudo leer (PDF inválido, muy grande, OCR caído, o sin ningún dato útil): en el caso
-# normal la primera se lee bien y ahí termina (ver procesar_siguiente_acta).
+# la anterior no se pudo leer (PDF inválido, muy grande, OCR caído) o no trajo nada que sirva (ningún dato, o
+# solo datos sueltos y ninguno de los campos clave): en el caso normal la primera se lee bien y ahí termina
+# (ver procesar_siguiente_acta).
 MAX_ACTAS_A_ESCANEAR = 3
 TIPO_ACTA_PREFERIDA = "INFR"
 COLUMNA_ESTADO_VISITA = "estado_visita"  # columna de la Card 82534 de Metabase
@@ -121,6 +122,14 @@ def _spec_sin_datos(spec: dict) -> bool:
     """Una extracción con TODOS los campos técnicos vacíos es un acta que no sirvió (documento ajeno,
     OCR ilegible…): se trata como falla técnica para probar la siguiente candidata, no como lectura."""
     return all(spec.get(c) in (None, "", []) for c in _CAMPOS_TECNICOS)
+
+
+def _trae_campos_clave(spec: dict) -> bool:
+    """¿La lectura trae AL MENOS UNO de los campos clave (CAMPOS_A_COMBINAR_ALCANCE)? Un acta "genérica" puede
+    traer algún dato suelto (p. ej. relacion_tp) y ninguno de los que definen el tipo de medida: leerla no deja el
+    CO mejor que no haberla leído, así que no basta para dejar de buscar (Dinovi, 2026-10-01, CO del Hotel San
+    Lázaro: la NOTE no traía nada clave y la LEGA siguiente traía todo)."""
+    return any(spec.get(c) not in (None, "", []) for c in CAMPOS_A_COMBINAR_ALCANCE)
 
 
 def _faltan_campos(spec_combinado: dict) -> bool:
@@ -217,10 +226,14 @@ def procesar_siguiente_acta(
             cache.guardar(url, spec_final)
 
     if spec_final and not _spec_sin_datos(spec_final):
-        _combinar_en(estado, fila, etiqueta, spec_final)
-        # UNA acta por CO (Dinovi, 2026-10-01): con una lectura útil se termina, aunque falten campos.
-        # Las candidatas de respaldo solo se prueban cuando la anterior NO se pudo leer.
-        estado.actas_pendientes.clear()
+        _combinar_en(estado, fila, etiqueta, spec_final)  # lo que traiga se conserva, sea poco o mucho
+        if _trae_campos_clave(spec_final):
+            # UNA acta por CO (Dinovi, 2026-10-01): con una lectura útil se termina, aunque falten campos.
+            # Las candidatas de respaldo solo se prueban cuando la anterior NO sirvió.
+            estado.actas_pendientes.clear()
+        elif estado.actas_pendientes:
+            estado.observaciones.append(f"[{etiqueta}] no trajo ninguno de los campos clave; se prueba la siguiente.")
+        # sin más candidatas: termina con lo poco que haya
     elif spec_final:
         estado.observaciones.append(
             f"[{etiqueta}] el acta no trajo ningún dato útil" + ("; se prueba la siguiente." if estado.actas_pendientes else ".")

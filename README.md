@@ -215,10 +215,14 @@ todos en una sola `Flask(__name__)`, y `pyproject.toml` declara
 
 **Respaldo SOLO por falla técnica.** La cola de actas va en ese orden de preferencia (INFR primero, luego
 las demás de la más reciente a la más vieja; máx. `MAX_ACTAS_A_ESCANEAR` = 3 candidatas) y se lee la
-primera. Si no se pudo leer — el PDF no se descarga o es inválido, pesa demasiado, el OCR de Drive falla,
-o el acta no trae ningún dato útil — se prueba la siguiente candidata. En cuanto una acta se lee bien
-termina el CO, **aunque falten campos** (nunca se sigue leyendo por campos faltantes). En la muestra de
-la primera prueba, 3 de 10 COs tenían un acta ilegible, y sin este respaldo habrían quedado sin nada.
+primera. Si no sirvió — el PDF no se descarga o es inválido, pesa demasiado, el OCR de Drive falla, el acta
+no trae ningún dato útil, o **solo trae datos sueltos y ninguno de los 6 campos clave** (`tipo_medida_actual`,
+`nivel_tension`, `capacidad_instalada_kva`, `trafo_uso`, `ubicacion_medida`, `elementos_medida`) — se prueba la
+siguiente candidata (lo poco que trajo la anterior se conserva). En cuanto una acta trae **al menos uno** de
+esos campos clave termina el CO, **aunque falten otros** (nunca se sigue leyendo por campos faltantes). En la
+muestra de la primera prueba, 3 de 10 COs tenían un acta ilegible, y sin este respaldo habrían quedado sin nada.
+El caso que motivó lo de los "datos sueltos" (CO del Hotel San Lázaro): una NOTE genérica traía un dato suelto y
+ninguno clave, y la LEGA siguiente traía todo; el máximo sigue siendo 3 actas leídas por CO.
 
 "Exitosa" = la columna `estado_visita` de la Card 82534 de Metabase vale `Cierre Exitoso` (se compara sin
 importar mayúsculas, acentos ni espacios). Si la tarjeta no trae esa columna se falla con un error claro
