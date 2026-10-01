@@ -14,7 +14,7 @@ import re
 
 import requests
 
-from core.data_sources.llm_client import AnthropicClient
+from core.data_sources.llm_client import AnthropicClient, contexto_llamada
 
 _MAX_TOKENS = 300
 _EFFORT = "low"
@@ -51,7 +51,8 @@ def extraer_ratio_de_certificado_calibracion(url: str | None, llm: AnthropicClie
             ],
             max_tokens=_MAX_TOKENS, effort=_EFFORT,
         )
-        texto = llm.enviar(body)
+        with contexto_llamada(llm, tipo="certificado"):
+            texto = llm.enviar(body)
         match = _PATRON_JSON.search(texto)
         if not match:
             return None

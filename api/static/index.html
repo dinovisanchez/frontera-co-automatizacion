@@ -138,6 +138,8 @@
     <button type="button" class="tab-btn active" id="tabBtnAlcance">Alcance Quinquenal</button>
     <button type="button" class="tab-btn" id="tabBtnLote">Comparación Masiva</button>
     <button type="button" class="tab-btn" id="tabBtnOpexEquipos">OPEX desde Equipos</button>
+    <button type="button" class="tab-btn" id="tabBtnConsumo">Consumo</button>
+    <button type="button" class="tab-btn" id="tabBtnComparar">Comparar modelos</button>
   </div>
 
   <div id="panelAlcance">
@@ -208,6 +210,41 @@
     </div>
 
     <div id="resultadosOpexEquipos"></div>
+  </div>
+
+  <div id="panelComparar" style="display:none;">
+    <h1>Comparar modelos</h1>
+    <p class="subtitle">Prueba si una configuración más barata extrae lo mismo que la actual. Por cada CO toma su acta más reciente, la lee UNA vez (OCR) y le pide a Claude la extracción de los 12 campos técnicos con la configuración actual y con las candidatas, sobre el mismo texto. Te muestra en qué campos difieren y cuánto costó cada una. <b>La actual es la referencia, no la verdad</b>: una diferencia puede ser un error de la candidata o uno de la actual — revísala contra el acta. No guarda nada en tus hojas de trabajo; sí gasta API de Claude (unos centavos por acta y por configuración).</p>
+
+    <div class="card">
+      <div class="card-title">Prueba</div>
+      <label for="cosComparar">Códigos CO (unos 20 a 30, que incluyan casos difíciles)</label>
+      <textarea id="cosComparar" rows="4" placeholder="CO0800004954, CO0400005205..."></textarea>
+      <label>Candidatas a comparar con la actual (hasta 3)</label>
+      <div id="candidatasComparar"></div>
+      <label for="actasPorCoComparar">Actas por CO</label>
+      <select id="actasPorCoComparar"><option value="1">1 (la más reciente)</option><option value="2">2 (las dos más recientes)</option></select>
+      <div class="toolbar"><button id="btnComparar">Comparar</button></div>
+      <div class="spinner" id="spinnerComparar">Comparando…</div>
+      <div id="resumenComparar" style="margin-top:12px;"></div>
+    </div>
+    <div id="detalleComparar"></div>
+  </div>
+
+  <div id="panelConsumo" style="display:none;">
+    <h1>Consumo de la API de Claude</h1>
+    <p class="subtitle">Cada llamada a Claude deja una fila en la hoja "PyConsumo" (tokens, intentos, segundos y costo estimado). Aquí se resume: cuánto cuesta un CO, si el caché funciona, cuántas respuestas se cortan y cuántos reintentos hay. No llama a Claude ni cuesta nada. El costo es una estimación con los precios oficiales (config/settings.py); el valor exacto está en la consola de Anthropic.</p>
+
+    <div class="card">
+      <div class="card-title">Resumen</div>
+      <label for="consumoDesde">Desde (opcional, fecha UTC)</label>
+      <input id="consumoDesde" type="date" />
+      <div class="toolbar">
+        <button id="btnConsumo">Calcular resumen</button>
+      </div>
+      <div class="spinner" id="spinnerConsumo">Leyendo "PyConsumo"…</div>
+      <div id="resultadoConsumo" style="margin-top:12px;"></div>
+    </div>
   </div>
 
   <script>
@@ -1566,8 +1603,8 @@
     });
 
     // ---------- Pestañas: Alcance Quinquenal / Comparación Masiva / OPEX desde Equipos ----------
-    var PANELES_TAB = { alcance: 'panelAlcance', lote: 'panelLote', opexEquipos: 'panelOpexEquipos' };
-    var BOTONES_TAB = { alcance: 'tabBtnAlcance', lote: 'tabBtnLote', opexEquipos: 'tabBtnOpexEquipos' };
+    var PANELES_TAB = { alcance: 'panelAlcance', lote: 'panelLote', opexEquipos: 'panelOpexEquipos', consumo: 'panelConsumo', comparar: 'panelComparar' };
+    var BOTONES_TAB = { alcance: 'tabBtnAlcance', lote: 'tabBtnLote', opexEquipos: 'tabBtnOpexEquipos', consumo: 'tabBtnConsumo', comparar: 'tabBtnComparar' };
     function activarTab(nombre) {
       Object.keys(PANELES_TAB).forEach(function (n) {
         document.getElementById(PANELES_TAB[n]).style.display = (n === nombre) ? '' : 'none';
@@ -1577,6 +1614,191 @@
     document.getElementById('tabBtnAlcance').addEventListener('click', function () { activarTab('alcance'); });
     document.getElementById('tabBtnLote').addEventListener('click', function () { activarTab('lote'); });
     document.getElementById('tabBtnOpexEquipos').addEventListener('click', function () { activarTab('opexEquipos'); });
+    document.getElementById('tabBtnConsumo').addEventListener('click', function () { activarTab('consumo'); });
+    document.getElementById('tabBtnComparar').addEventListener('click', function () { activarTab('comparar'); });
+
+    // ---------- Comparar modelos: ¿una configuración más barata extrae lo mismo? (/api/comparar_config) ----------
+    // Los ids deben coincidir con CONFIGS_CANDIDATAS de core/services/comparador.py.
+    var COMP_CANDIDATAS = [
+      { id: 'opus-5-5-medio', nombre: 'Opus 5.5 · esfuerzo medio', nota: '20 % más barato por token', marcada: true },
+      { id: 'sonnet-5-5-medio', nombre: 'Sonnet 5.5 · esfuerzo medio', nota: '60 % más barato por token', marcada: true },
+      { id: 'sonnet-5-5-bajo', nombre: 'Sonnet 5.5 · esfuerzo bajo', nota: '60 % más barato y menos razonamiento' },
+      { id: 'opus-5-5-bajo', nombre: 'Opus 5.5 · esfuerzo bajo', nota: '20 % más barato y menos razonamiento' },
+      { id: 'opus-5-bajo', nombre: 'Opus 5 · esfuerzo bajo', nota: 'mismo precio por token, menos razonamiento' }
+    ];
+    var COMP_COSTO_ESTIMADO_POR_LLAMADA = 0.05;  // USD, típico de la configuración actual; el real queda en "Consumo"
+    var compEntradas = [];  // una por acta: { co, data | error }
+
+    document.getElementById('candidatasComparar').innerHTML = COMP_CANDIDATAS.map(function (c) {
+      return '<label class="checkbox-line"><input type="checkbox" class="compCand" value="' + c.id + '"' + (c.marcada ? ' checked' : '') + ' /> ' +
+        escapeHtml(c.nombre) + ' <span style="color:var(--text-faint);">— ' + escapeHtml(c.nota) + '</span></label>';
+    }).join('');
+
+    var COMP_ESTADOS = { diferente: 'distinto', solo_actual: 'la candidata lo dejó vacío', solo_candidata: 'la actual lo dejó vacío', sin_resultado: 'sin resultado' };
+    function valorComp(v) { return v == null || v === '' ? '(vacío)' : (typeof v === 'string' ? v : JSON.stringify(v)); }
+
+    function pintarComparacion() {
+      var cands = COMP_CANDIDATAS.filter(function (c) { return compEntradas.some(function (e) { return e.data && e.data.comparaciones && e.data.comparaciones[c.id]; }); });
+      var conDatos = compEntradas.filter(function (e) { return e.data && e.data.configuraciones; });
+      var resumen = '';
+      if (conDatos.length) {
+        var costoActual = conDatos.reduce(function (s, e) { return s + e.data.configuraciones[0].costo_usd; }, 0);
+        var filas = cands.map(function (c) {
+          var comps = conDatos.map(function (e) { return e.data.comparaciones[c.id]; }).filter(Boolean);
+          var cfgs = conDatos.map(function (e) { return e.data.configuraciones.filter(function (x) { return x.id === c.id; })[0]; }).filter(Boolean);
+          var coinc = comps.reduce(function (s, r) { return s + r.coinciden; }, 0), total = comps.reduce(function (s, r) { return s + r.total; }, 0);
+          var identicas = comps.filter(function (r) { return r.coinciden === r.total; }).length;
+          var fallas = cfgs.filter(function (x) { return !x.ok; }).length;
+          var costo = cfgs.reduce(function (s, x) { return s + x.costo_usd; }, 0);
+          var costoRef = conDatos.reduce(function (s, e) { return s + (e.data.comparaciones[c.id] ? e.data.configuraciones[0].costo_usd : 0); }, 0);
+          var seg = cfgs.length ? cfgs.reduce(function (s, x) { return s + x.segundos; }, 0) / cfgs.length : null;
+          return [c.nombre, comps.length + ' actas', total ? pct(coinc / total) : '—', identicas + ' de ' + comps.length, String(fallas),
+            usd(costo, 4) + (costoRef ? ' (' + (costo <= costoRef ? '−' : '+') + Math.abs(Math.round((1 - costo / costoRef) * 100)) + ' %)' : ''),
+            seg == null ? '—' : seg.toFixed(1).replace('.', ',') + ' s'];
+        });
+        resumen = '<div class="item">' + conDatos.length + ' actas comparadas · la actual costó ' + usd(costoActual, 4) + ' en esta prueba</div>' +
+          tablaConsumo('Resumen por candidata (frente a la configuración actual)', ['Candidata', 'Comparadas', 'Campos que coinciden', 'Actas idénticas', 'Fallos', 'Costo (vs actual)', 'Tiempo medio'], filas) +
+          '<div class="req-note" style="padding:0;border:none;margin-top:8px;">Cómo leerlo: una candidata es prometedora si coincide en casi todos los campos y casi todas las actas salen idénticas. Pero esto solo mide acuerdo con la actual: revisa abajo CADA diferencia contra el acta (puede que la candidata acierte donde la actual falla). Con menos de ~20 actas no concluyas nada.</div>';
+      }
+      document.getElementById('resumenComparar').innerHTML = resumen;
+
+      var det = '';
+      compEntradas.forEach(function (e) {
+        det += '<div class="card"><div class="card-title">' + escapeHtml(e.co) + (e.data && e.data.acta ? ' — acta ' + escapeHtml(e.data.acta.tipo || '?') + ' ' + escapeHtml(e.data.acta.fecha || '') +
+          ' · <a href="' + escapeHtml(e.data.acta.url) + '" target="_blank" rel="noopener" style="font-size:12px;color:var(--accent);">ver acta</a>' : '') + '</div>';
+        if (e.error || (e.data && e.data.error)) {
+          det += '<div class="item warn">' + escapeHtml(e.error || e.data.error) + '</div></div>';
+          return;
+        }
+        var base = e.data.configuraciones[0];
+        if (!base.ok) det += '<div class="item warn">La configuración actual no devolvió resultado (' + escapeHtml(base.error || '') + '): no hay referencia para comparar.</div>';
+        e.data.configuraciones.slice(1).forEach(function (cfg) {
+          var nombre = (COMP_CANDIDATAS.filter(function (c) { return c.id === cfg.id; })[0] || { nombre: cfg.id }).nombre;
+          var r = e.data.comparaciones[cfg.id];
+          var estado = !cfg.ok ? '<span style="color:var(--red);">falló: ' + escapeHtml(cfg.error || '') + '</span>'
+            : (r.coinciden === r.total ? '<span style="color:var(--accent);">' + r.coinciden + '/' + r.total + ' idéntica</span>' : '<span style="color:var(--amber);">' + r.coinciden + '/' + r.total + ' coinciden</span>');
+          det += '<div class="item"><b>' + escapeHtml(nombre) + '</b>: ' + estado + ' · ' + usd(cfg.costo_usd, 4) + ' (actual ' + usd(base.costo_usd, 4) + ') · ' + cfg.segundos + ' s';
+          var campos = Object.keys(r.diferencias || {});
+          if (cfg.ok && campos.length) {
+            det += '<div style="margin-top:4px;">' + campos.map(function (k) {
+              var d = r.diferencias[k];
+              return '<div style="font-size:12px;padding-left:12px;">• <b>' + escapeHtml(k) + '</b> (' + escapeHtml(COMP_ESTADOS[d.estado] || d.estado) + '): actual → <code>' + escapeHtml(valorComp(d.actual)) + '</code> · candidata → <code>' + escapeHtml(valorComp(d.candidata)) + '</code></div>';
+            }).join('') + '</div>';
+          }
+          det += '</div>';
+        });
+        det += '</div>';
+      });
+      document.getElementById('detalleComparar').innerHTML = det;
+    }
+
+    document.getElementById('btnComparar').addEventListener('click', async function () {
+      var cos = [];
+      document.getElementById('cosComparar').value.toUpperCase().split(/[\s,;]+/).forEach(function (t) { if (t && cos.indexOf(t) === -1) cos.push(t); });
+      var cands = [].slice.call(document.querySelectorAll('.compCand:checked')).map(function (el) { return el.value; });
+      var actasPorCo = parseInt(document.getElementById('actasPorCoComparar').value, 10) || 1;
+      if (!cos.length) { alert('Pega al menos un código CO.'); return; }
+      if (!cands.length || cands.length > 3) { alert('Elige entre 1 y 3 candidatas.'); return; }
+      var llamadas = cos.length * actasPorCo * (1 + cands.length);
+      if (!confirm('Se compararán ' + cos.length + ' CO (hasta ' + actasPorCo + ' acta(s) cada uno) con la configuración actual y ' + cands.length + ' candidata(s): unas ' + llamadas +
+        ' llamadas a Claude, ≈ $' + (llamadas * COMP_COSTO_ESTIMADO_POR_LLAMADA).toFixed(2) + ' (estimado; el costo real queda en la pestaña Consumo).\n\nNo se guarda nada en tus hojas. ¿Continuar?')) return;
+
+      compEntradas = [];
+      document.getElementById('detalleComparar').innerHTML = '';
+      setRunning('btnComparar', 'spinnerComparar', true);
+      var sp = document.getElementById('spinnerComparar');
+      try {
+        for (var i = 0; i < cos.length; i++) {
+          for (var k = 0; k < actasPorCo; k++) {
+            sp.textContent = 'Comparando ' + cos[i] + ' (acta ' + (k + 1) + ') · CO ' + (i + 1) + ' de ' + cos.length + '…';
+            var data;
+            try {
+              data = await fetchJSON('POST', '/api/comparar_config', { co: cos[i], indice: k, candidatas: cands });
+            } catch (e) {
+              compEntradas.push({ co: cos[i], error: (e && e.message) || String(e) });
+              pintarComparacion();
+              break;  // si el CO falló no insistimos con su segunda acta
+            }
+            if (data.sin_acta) break;
+            compEntradas.push({ co: cos[i], data: data });
+            pintarComparacion();
+            if (data.total_actas <= k + 1) break;
+          }
+        }
+      } finally {
+        setRunning('btnComparar', 'spinnerComparar', false);
+        sp.textContent = 'Comparando…';
+        pintarComparacion();
+      }
+    });
+
+    // ---------- Consumo de la API de Claude (hoja "PyConsumo") ----------
+    function usd(n, dec) { return n == null ? '—' : '$' + Number(n).toLocaleString('es-CO', { minimumFractionDigits: dec == null ? 2 : dec, maximumFractionDigits: dec == null ? 2 : dec }); }
+    function pct(n) { return n == null ? '—' : (n * 100).toFixed(1).replace('.', ',') + ' %'; }
+    function num(n) { return n == null ? '—' : Math.round(n).toLocaleString('es-CO'); }
+
+    function tablaConsumo(titulo, encabezados, filas) {
+      if (!filas.length) return '';
+      var html = '<div class="subsection"><h3>' + escapeHtml(titulo) + '</h3><div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">';
+      html += '<thead><tr style="text-align:left;color:var(--text-sub);border-bottom:1px solid var(--border-soft);">' +
+        encabezados.map(function (h, i) { return '<th style="padding:5px 6px;' + (i ? 'text-align:right;' : '') + '">' + escapeHtml(h) + '</th>'; }).join('') + '</tr></thead><tbody>';
+      filas.forEach(function (f) {
+        html += '<tr style="border-bottom:1px solid var(--border-soft);">' +
+          f.map(function (c, i) { return '<td style="padding:5px 6px;' + (i ? 'text-align:right;' : '') + '">' + escapeHtml(c) + '</td>'; }).join('') + '</tr>';
+      });
+      return html + '</tbody></table></div></div>';
+    }
+
+    function pintarConsumo(r, destino) {
+      if (!r.llamadas) {
+        destino.innerHTML = '<div class="item warn">Todavía no hay llamadas registradas' + (document.getElementById('consumoDesde').value ? ' desde esa fecha' : '') +
+          '. Se empiezan a registrar con la primera extracción de actas después del despliegue.</div>';
+        return;
+      }
+      var html = '<div class="item">' + escapeHtml(num(r.llamadas)) + ' llamadas (' + escapeHtml(num(r.llamadas_ok)) + ' bien, ' + escapeHtml(num(r.llamadas_con_error)) + ' con error) · ' +
+        escapeHtml((r.desde || '').slice(0, 16).replace('T', ' ')) + ' → ' + escapeHtml((r.hasta || '').slice(0, 16).replace('T', ' ')) + ' UTC</div>';
+      html += tablaConsumo('Costo estimado', ['Indicador', 'Valor'], [
+        ['Costo total', usd(r.costo_total_usd)],
+        ['Costo medio por llamada', usd(r.costo_medio_por_llamada_usd, 4)],
+        ['COs distintos', num(r.cos_distintos)],
+        ['Costo medio por CO', usd(r.costo_medio_por_co_usd, 4)],
+        ['Costo del CO más caro', usd(r.costo_max_por_co_usd, 4)],
+        ['Llamadas medias por CO', r.llamadas_medias_por_co == null ? '—' : String(r.llamadas_medias_por_co).replace('.', ',')],
+        ['Proyección: 100 COs', r.proyeccion_usd ? usd(r.proyeccion_usd['100_cos']) : '—'],
+        ['Proyección: 400 COs (un lote grande)', r.proyeccion_usd ? usd(r.proyeccion_usd['400_cos']) : '—'],
+      ]);
+      html += tablaConsumo('Señales de dinero perdido', ['Indicador', 'Valor'], [
+        ['Aciertos del caché (qué parte de la entrada sale barata)', pct(r.cache_tasa_aciertos)],
+        ['Respuestas cortadas por llegar al límite de salida', num(r.respuestas_cortadas.cantidad) + ' (' + pct(r.respuestas_cortadas.pct) + ')'],
+        ['Llamadas con reintentos', num(r.reintentos.llamadas_con_reintentos) + ' (' + pct(r.reintentos.pct) + ')'],
+        ['Intentos fallidos en total (pueden cobrarse)', num(r.reintentos.intentos_fallidos_totales)],
+        ['Parte de la salida que es razonamiento', pct(r.razonamiento_pct_de_salida)],
+        ['Segundos por llamada (medio / p90)', (r.segundos.medio == null ? '—' : r.segundos.medio.toFixed(1).replace('.', ',')) + ' / ' + (r.segundos.p90 == null ? '—' : r.segundos.p90.toFixed(1).replace('.', ','))],
+      ]);
+      html += tablaConsumo('Por tipo de llamada', ['Tipo', 'Llamadas', 'Costo total', 'Costo medio', 'Entrada media', 'Salida media'],
+        Object.keys(r.por_tipo).map(function (k) { var t = r.por_tipo[k]; return [k, num(t.llamadas), usd(t.costo_total_usd), usd(t.costo_medio_usd, 4), num(t.entrada_media), num(t.salida_media)]; }));
+      html += tablaConsumo('Por modelo y esfuerzo (para comparar antes y después de un cambio)', ['Configuración', 'Llamadas', 'Costo total', 'Costo medio', 'Salida media'],
+        Object.keys(r.por_configuracion).map(function (k) { var t = r.por_configuracion[k]; return [k, num(t.llamadas), usd(t.costo_total_usd), usd(t.costo_medio_usd, 4), num(t.salida_media)]; }));
+      html += tablaConsumo('Por origen', ['Origen', 'Llamadas', 'Costo total'],
+        Object.keys(r.por_origen).map(function (k) { return [k, num(r.por_origen[k].llamadas), usd(r.por_origen[k].costo_total_usd)]; }));
+      var errores = Object.keys(r.errores_por_tipo);
+      if (errores.length) html += tablaConsumo('Errores', ['Error', 'Cantidad'], errores.map(function (k) { return [k, num(r.errores_por_tipo[k])]; }));
+      destino.innerHTML = html;
+    }
+
+    document.getElementById('btnConsumo').addEventListener('click', function () {
+      var desde = document.getElementById('consumoDesde').value;
+      var destino = document.getElementById('resultadoConsumo');
+      destino.innerHTML = '';
+      setRunning('btnConsumo', 'spinnerConsumo', true);
+      fetchJSON('GET', '/api/consumo_resumen' + (desde ? '?desde=' + encodeURIComponent(desde) : '')).then(function (r) {
+        setRunning('btnConsumo', 'spinnerConsumo', false);
+        pintarConsumo(r, destino);
+      }).catch(function (err) {
+        setRunning('btnConsumo', 'spinnerConsumo', false);
+        destino.innerHTML = renderError(err);
+      });
+    });
   </script>
 </body>
 </html>

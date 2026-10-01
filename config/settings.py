@@ -85,6 +85,19 @@ CARRO_CANASTA_MONTAJE_EXTERIOR = 4_500_000
 DESCARGO_MONTAJE_TC_TP = 8_000_000
 DESCARGO_MONTAJE_TC_TP_ENEL = 12_000_000
 
+# Precios de la API de Claude en USD por millón de tokens — leídos de la página oficial de precios
+# (https://platform.claude.com/docs/en/about-claude/pricing) el 2026-10-01. Solo sirven para ESTIMAR
+# el costo en la pestaña "Consumo" (core/services/consumo.py): si Anthropic cambia un precio o se
+# cambia de modelo, se actualiza acá. "escritura_cache" es la de 5 minutos (la que usa la app).
+# Un modelo que no esté en esta tabla se registra igual, pero con el costo en blanco.
+PRECIOS_USD_POR_MTOK = {
+    "claude-opus-5": {"entrada": 5.0, "escritura_cache": 6.25, "lectura_cache": 0.50, "salida": 25.0},
+    "claude-opus-5-5": {"entrada": 4.0, "escritura_cache": 5.0, "lectura_cache": 0.20, "salida": 20.0},
+    "claude-sonnet-5-5": {"entrada": 2.0, "escritura_cache": 2.5, "lectura_cache": 0.20, "salida": 10.0},
+    "claude-sonnet-5": {"entrada": 2.0, "escritura_cache": 2.5, "lectura_cache": 0.20, "salida": 10.0},
+    "claude-haiku-4-5": {"entrada": 1.0, "escritura_cache": 1.25, "lectura_cache": 0.10, "salida": 5.0},
+}
+
 # Hoja de "origen" (cliente/OR/maniobra por CO) — la misma que Dinovi confirmó como la hoja
 # "Data": en Codigo.gs se referencia por GID, no por nombre (ALCANCE_GID_ORIGEN = 1682501029,
 # ALCANCE_FILA_INICIO_ORIGEN = 4). Se preserva igual acá: sheets_client debe resolver la

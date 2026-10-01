@@ -234,6 +234,48 @@ se pierde progreso ya combinado.
 `/api/opex_resolver` sí es síncrono: no llama al LLM ni descarga nada, solo lee hojas y hace
 fuzzy-match de texto en memoria — no hay riesgo de timeout ahí.
 
+## Consumo de la API de Claude (pestaña "Consumo" / hoja "PyConsumo")
+
+Dinovi, 2026-10-01: la app no medía lo que gastaba en Claude, así que todo costo era un estimado.
+Ahora **cada llamada a Claude deja una fila** en la pestaña `PyConsumo` de la hoja de Alcances (se
+crea sola): tokens de entrada / de caché / de salida / de razonamiento, `stop_reason`, intentos y
+cuántos fallaron, segundos, modelo, esfuerzo, el CO y el tipo de llamada (`acta_texto`, `acta_pdf`,
+`operador`, `certificado`), el origen (`individual` | `lote`) y el costo estimado. La pestaña
+**Consumo** de la pantalla (`GET /api/consumo_resumen[?desde=AAAA-MM-DD]`) lo resume: costo medio por
+CO, proyección para 100/400 COs, aciertos del caché, respuestas cortadas por `max_tokens`, reintentos,
+y una tabla por modelo+esfuerzo para comparar el antes y el después de un cambio.
+
+- El registro es "mejor esfuerzo": si Sheets falla, se anota en el log de Vercel y la extracción
+  sigue igual (`core/data_sources/llm_client.py` → `_registrar`, `core/services/consumo.py`).
+- El costo es una **estimación** con `PRECIOS_USD_POR_MTOK` (`config/settings.py`, precios oficiales
+  leídos el 2026-10-01); si cambian los precios o el modelo, se actualiza ahí. El valor exacto de la
+  factura está en la consola de Anthropic.
+- Mide, no ahorra: sirve para decidir con datos (¿el caché funciona?, ¿hay respuestas cortadas o
+  reintentos pagados?, ¿cuánto cuesta un CO?) antes de tocar modelo o esfuerzo.
+
+## Comparar modelos (pestaña "Comparar modelos" / `POST /api/comparar_config`)
+
+Para bajar el costo sin perder calidad hay que poder **medir la calidad**: esta pestaña convierte el
+cambio de modelo/esfuerzo en una prueba. Por cada CO toma su acta más reciente, la descarga y la lee con
+OCR UNA vez, y corre la extracción de producción (`analizar_acta_desde_texto`, mismo prompt y mismo
+código) sobre ese MISMO texto con la configuración actual y con 1-3 candidatas (Opus 5.5, Sonnet 5.5,
+distintos esfuerzos — `CONFIGS_CANDIDATAS` en `core/services/comparador.py`; Haiku 4.5 queda fuera
+porque no acepta `effort`). Compara los 12 campos técnicos (`observaciones`/`supuestos` son texto libre
+y no cuentan) y muestra por candidata: campos que coinciden, actas idénticas, fallos, costo frente a la
+actual y tiempo.
+
+- **La configuración actual es la referencia, no la verdad.** Una diferencia puede ser un error de la
+  candidata o uno de la actual: se revisa contra el acta (la pestaña trae el enlace). La herramienta
+  no decide sola.
+- Una acta por llamada (cabe en los 60 s de Vercel); las candidatas corren en paralelo en hilos.
+- **Gasta API** (≈ una extracción por configuración y acta; la pestaña estima el costo y pide
+  confirmación). No escribe en las hojas de trabajo; solo deja el consumo en `PyConsumo` con
+  origen `comparacion`. Los resultados viven en la pantalla: si cierras la pestaña se pierden (el
+  costo no).
+- Uso recomendado: 20 a 30 COs que incluyan casos difíciles (OCR malo, actas incompletas); con menos no se
+  puede concluir. Solo después de revisar las diferencias se cambia el modelo/esfuerzo de producción
+  (`AnthropicConfig` en `config/settings.py`).
+
 ## Correr localmente
 
 ```bash

@@ -10,7 +10,7 @@ import base64
 import json
 import re
 
-from core.data_sources.llm_client import AnthropicClient
+from core.data_sources.llm_client import AnthropicClient, contexto_llamada
 from core.prompts.or_extraction_prompt import OR_EXTRACTION_PROMPT_V1
 
 _MAX_TOKENS = 300  # igual que extraerRatioDeCertificadoCalibracion
@@ -18,7 +18,7 @@ _EFFORT = "low"
 _PATRON_JSON = re.compile(r"\{[\s\S]*\}")
 
 
-def extraer_or_desde_pdf(pdf_bytes: bytes, llm: AnthropicClient) -> str | None:
+def extraer_or_desde_pdf(pdf_bytes: bytes, llm: AnthropicClient, co: str | None = None) -> str | None:
     body = llm.cuerpo_extraccion_puntual(
         OR_EXTRACTION_PROMPT_V1,
         [
@@ -33,7 +33,8 @@ def extraer_or_desde_pdf(pdf_bytes: bytes, llm: AnthropicClient) -> str | None:
     )
 
     try:
-        texto = llm.enviar(body)
+        with contexto_llamada(llm, co=co, tipo="operador"):
+            texto = llm.enviar(body)
         match = _PATRON_JSON.search(texto)
         if not match:
             return None

@@ -78,7 +78,7 @@ def _or_desde_acta_pdf(sheets: SheetsClient, metabase: MetabaseClient, llm: Anth
     descarga = acta_downloader.descargar_pdf_acta(url)
     if not descarga.ok:
         return None
-    or_valor = or_extractor.extraer_or_desde_pdf(descarga.bytes_pdf, llm)
+    or_valor = or_extractor.extraer_or_desde_pdf(descarga.bytes_pdf, llm, co=co)
     if or_valor:
         cache.guardar(clave_cache, {"or": or_valor})
     return or_valor
