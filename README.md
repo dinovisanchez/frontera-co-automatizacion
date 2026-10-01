@@ -253,6 +253,29 @@ y una tabla por modelo+esfuerzo para comparar el antes y el después de un cambi
 - Mide, no ahorra: sirve para decidir con datos (¿el caché funciona?, ¿hay respuestas cortadas o
   reintentos pagados?, ¿cuánto cuesta un CO?) antes de tocar modelo o esfuerzo.
 
+## Comparar modelos (pestaña "Comparar modelos" / `POST /api/comparar_config`)
+
+Para bajar el costo sin perder calidad hay que poder **medir la calidad**: esta pestaña convierte el
+cambio de modelo/esfuerzo en una prueba. Por cada CO toma su acta más reciente, la descarga y la lee con
+OCR UNA vez, y corre la extracción de producción (`analizar_acta_desde_texto`, mismo prompt y mismo
+código) sobre ese MISMO texto con la configuración actual y con 1-3 candidatas (Opus 5.5, Sonnet 5.5,
+distintos esfuerzos — `CONFIGS_CANDIDATAS` en `core/services/comparador.py`; Haiku 4.5 queda fuera
+porque no acepta `effort`). Compara los 12 campos técnicos (`observaciones`/`supuestos` son texto libre
+y no cuentan) y muestra por candidata: campos que coinciden, actas idénticas, fallos, costo frente a la
+actual y tiempo.
+
+- **La configuración actual es la referencia, no la verdad.** Una diferencia puede ser un error de la
+  candidata o uno de la actual: se revisa contra el acta (la pestaña trae el enlace). La herramienta
+  no decide sola.
+- Una acta por llamada (cabe en los 60 s de Vercel); las candidatas corren en paralelo en hilos.
+- **Gasta API** (≈ una extracción por configuración y acta; la pestaña estima el costo y pide
+  confirmación). No escribe en las hojas de trabajo; solo deja el consumo en `PyConsumo` con
+  origen `comparacion`. Los resultados viven en la pantalla: si cierras la pestaña se pierden (el
+  costo no).
+- Uso recomendado: 20 a 30 COs que incluyan casos difíciles (OCR malo, actas incompletas); con menos no se
+  puede concluir. Solo después de revisar las diferencias se cambia el modelo/esfuerzo de producción
+  (`AnthropicConfig` en `config/settings.py`).
+
 ## Correr localmente
 
 ```bash
