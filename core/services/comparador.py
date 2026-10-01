@@ -16,6 +16,8 @@ después, en secuencia, para no compartir el cliente de Sheets entre hilos.
 
 import re
 import time
+
+import requests
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
@@ -96,10 +98,17 @@ def comparar_specs(actual: dict | None, candidata: dict | None) -> dict:
     return {"coinciden": conteo["igual"], "total": len(CAMPOS_COMPARADOS), "conteo": conteo, "diferencias": campos}
 
 
-def _extraer(meta: MetadatosActa, texto_ocr: str, cfg: AnthropicConfig, config_id: str) -> dict:
-    """Corre la extracción de producción (analizar_acta_desde_texto) con `cfg` sobre el texto dado."""
+def _extraer(meta: MetadatosActa, texto_ocr: str, cfg: AnthropicConfig, config_id: str, timeout_seg: float | None = None) -> dict:
+    """Corre la extracción de producción (analizar_acta_desde_texto) con `cfg` sobre el texto dado.
+
+    `timeout_seg`: con un valor, UN solo intento con ese tiempo máximo (la comparación mide lo que el modelo
+    es capaz de hacer y debe caber en los 60 s de Vercel: tres intentos de 15 s no caben junto con la
+    descarga y el OCR, y daban un 504 sin resultado). Sin valor, los intentos de producción.
+    """
     registros: list[dict] = []
     llm = AnthropicClient(cfg)
+    if timeout_seg:
+        llm.timeout_seg, llm.max_reintentos = timeout_seg, 1
     llm.registrador = registros.append
     llm.contexto = {"origen": "comparacion"}
     inicio = time.monotonic()
@@ -109,6 +118,8 @@ def _extraer(meta: MetadatosActa, texto_ocr: str, cfg: AnthropicConfig, config_i
         spec = respuesta.spec
         if spec is None:
             error = "La respuesta no trajo un JSON válido."
+    except requests.Timeout:
+        error = f"No respondió en {timeout_seg or llm.timeout_seg:g} s."
     except Exception as e:  # noqa: BLE001 — una configuración que falla es un RESULTADO de la comparación, no un error de la herramienta
         error = str(e)[:300]
 
@@ -125,7 +136,9 @@ def _extraer(meta: MetadatosActa, texto_ocr: str, cfg: AnthropicConfig, config_i
     }
 
 
-def comparar_acta_texto(meta: MetadatosActa, texto_ocr: str, cfg_actual: AnthropicConfig, ids_candidatas: list[str]) -> dict:
+def comparar_acta_texto(
+    meta: MetadatosActa, texto_ocr: str, cfg_actual: AnthropicConfig, ids_candidatas: list[str], timeout_seg: float | None = None,
+) -> dict:
     """La configuración actual + cada candidata, en paralelo, sobre el MISMO texto de acta."""
     configs = [(ID_ACTUAL, cfg_actual)]
     for cid in ids_candidatas:
@@ -133,7 +146,7 @@ def comparar_acta_texto(meta: MetadatosActa, texto_ocr: str, cfg_actual: Anthrop
         configs.append((cid, replace(cfg_actual, model=c["modelo"], effort=c["esfuerzo"])))
 
     with ThreadPoolExecutor(max_workers=len(configs)) as pool:
-        resultados = list(pool.map(lambda par: _extraer(meta, texto_ocr, par[1], par[0]), configs))
+        resultados = list(pool.map(lambda par: _extraer(meta, texto_ocr, par[1], par[0], timeout_seg), configs))
 
     actual = resultados[0]
     comparaciones = {r["id"]: comparar_specs(actual["spec"], r["spec"]) for r in resultados[1:]}

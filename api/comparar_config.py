@@ -2,13 +2,16 @@
 actual (modelo + esfuerzo) y con 1-3 candidatas, sobre el MISMO texto OCR. Ver comparador.py.
 
 Body: {"co": "CO0100002908", "indice": 0, "candidatas": ["opus-5-5-medio", "sonnet-5-5-medio"]}
-  `indice`: 0 = acta más reciente del CO, 1 = la siguiente… (máx. 5, igual que producción). Se procesa
-  UNA acta por llamada: descarga + OCR + (1 + candidatas) llamadas a Claude en paralelo caben en los
-  60 s de Vercel; el frontend repite la llamada por cada acta.
+  `indice`: 0 = la acta que producción leería para el CO (la INFR exitosa, o la más reciente exitosa;
+  ver alcance_combiner.seleccionar_acta). Producción lee UNA acta por CO, así que solo el 0 existe; se
+  conserva el parámetro por compatibilidad. Descarga + OCR + (1 + candidatas) llamadas a Claude en
+  paralelo caben en los 60 s de Vercel.
 
 GASTA API de Claude (≈ una extracción por configuración); no guarda nada en las hojas de trabajo,
 solo deja el consumo en "PyConsumo" con origen "comparacion".
 """
+
+import time
 
 from flask import Blueprint, jsonify, request
 
@@ -22,9 +25,18 @@ from core.utils import normalizar_codigo
 
 bp = Blueprint("comparar_config", __name__)
 
+# La función de Vercel muere a los 60 s (vercel.json) y entrega un 504 SIN resultado. Se reserva un
+# margen y lo que quede después de descargar + leer el acta es el tiempo máximo de Claude; si ya no
+# alcanza para una llamada razonable, NO se llama a Claude (no se gasta nada) y se avisa.
+PRESUPUESTO_SEG = 55
+MARGEN_SEG = 5
+MIN_SEG_PARA_CLAUDE = 15
+MAX_SEG_POR_LLAMADA = 45
+
 
 @bp.post("/api/comparar_config")
 def comparar_config():
+    inicio = time.monotonic()
     body = request.get_json(force=True, silent=True) or {}
     co_raw = body.get("co")
     if not co_raw:
@@ -49,7 +61,7 @@ def comparar_config():
         return jsonify({"error": f'No encontré filas de "{co}" en Metabase.'}), 404
     actas = alcance_combiner.preparar_actas_pendientes(co, filas_metabase_co)
     if not actas:
-        return jsonify({"error": f'"{co}" no tiene ninguna acta con act_pdf_url para comparar.'}), 404
+        return jsonify({"error": alcance_combiner.motivo_sin_acta(co, filas_metabase_co)}), 404
     if indice >= len(actas):
         return jsonify({"co": co, "total_actas": len(actas), "sin_acta": True})
 
@@ -63,8 +75,15 @@ def comparar_config():
     if not ocr.ok:
         return jsonify({"co": co, "total_actas": len(actas), "acta": acta, "error": f"El OCR del acta falló: {ocr.motivo_fallo}"})
 
+    restante = PRESUPUESTO_SEG - (time.monotonic() - inicio)
+    if restante < MIN_SEG_PARA_CLAUDE + MARGEN_SEG:
+        return jsonify({"co": co, "total_actas": len(actas), "acta": acta, "error": (
+            f"Descargar y leer el acta tardó demasiado ({PRESUPUESTO_SEG - restante:.0f} s) y ya no quedaba tiempo para llamar a Claude. "
+            "No se gastó nada. Reintenta este CO.")})
+    timeout_seg = min(MAX_SEG_POR_LLAMADA, restante - MARGEN_SEG)
+
     meta = MetadatosActa(co=co, tipo_acta=fila.get("service_type_id", "?"), fecha_visita=fila.get("fecha_visita", ""))
-    resultado = comparar_acta_texto(meta, ocr.texto, cargar_anthropic_config(), candidatas)
+    resultado = comparar_acta_texto(meta, ocr.texto, cargar_anthropic_config(), candidatas, timeout_seg=timeout_seg)
 
     # El consumo de la comparación queda en PyConsumo (origen "comparacion"), en secuencia.
     store = get_consumo_store(deps.sheets)

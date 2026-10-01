@@ -214,7 +214,7 @@
 
   <div id="panelComparar" style="display:none;">
     <h1>Comparar modelos</h1>
-    <p class="subtitle">Prueba si una configuración más barata extrae lo mismo que la actual. Por cada CO toma su acta más reciente, la lee UNA vez (OCR) y le pide a Claude la extracción de los 12 campos técnicos con la configuración actual y con las candidatas, sobre el mismo texto. Te muestra en qué campos difieren y cuánto costó cada una. <b>La actual es la referencia, no la verdad</b>: una diferencia puede ser un error de la candidata o uno de la actual — revísala contra el acta. No guarda nada en tus hojas de trabajo; sí gasta API de Claude (unos centavos por acta y por configuración).</p>
+    <p class="subtitle">Prueba si una configuración más barata extrae lo mismo que la actual. Por cada CO toma la acta que leería producción (la INFR de una visita exitosa o, si no hay, la más reciente exitosa), la lee UNA vez (OCR) y le pide a Claude la extracción de los 12 campos técnicos con la configuración actual y con las candidatas, sobre el mismo texto. Te muestra en qué campos difieren y cuánto costó cada una. <b>La actual es la referencia, no la verdad</b>: una diferencia puede ser un error de la candidata o uno de la actual — revísala contra el acta. No guarda nada en tus hojas de trabajo; sí gasta API de Claude (unos centavos por acta y por configuración).</p>
 
     <div class="card">
       <div class="card-title">Prueba</div>
@@ -222,8 +222,6 @@
       <textarea id="cosComparar" rows="4" placeholder="CO0800004954, CO0400005205..."></textarea>
       <label>Candidatas a comparar con la actual (hasta 3)</label>
       <div id="candidatasComparar"></div>
-      <label for="actasPorCoComparar">Actas por CO</label>
-      <select id="actasPorCoComparar"><option value="1">1 (la más reciente)</option><option value="2">2 (las dos más recientes)</option></select>
       <div class="toolbar"><button id="btnComparar">Comparar</button></div>
       <div class="spinner" id="spinnerComparar">Comparando…</div>
       <div id="resumenComparar" style="margin-top:12px;"></div>
@@ -1696,11 +1694,11 @@
       var cos = [];
       document.getElementById('cosComparar').value.toUpperCase().split(/[\s,;]+/).forEach(function (t) { if (t && cos.indexOf(t) === -1) cos.push(t); });
       var cands = [].slice.call(document.querySelectorAll('.compCand:checked')).map(function (el) { return el.value; });
-      var actasPorCo = parseInt(document.getElementById('actasPorCoComparar').value, 10) || 1;
+      var actasPorCo = 1;  // producción lee UNA acta por CO (alcance_combiner.seleccionar_acta)
       if (!cos.length) { alert('Pega al menos un código CO.'); return; }
       if (!cands.length || cands.length > 3) { alert('Elige entre 1 y 3 candidatas.'); return; }
       var llamadas = cos.length * actasPorCo * (1 + cands.length);
-      if (!confirm('Se compararán ' + cos.length + ' CO (hasta ' + actasPorCo + ' acta(s) cada uno) con la configuración actual y ' + cands.length + ' candidata(s): unas ' + llamadas +
+      if (!confirm('Se compararán ' + cos.length + ' CO (una acta cada uno) con la configuración actual y ' + cands.length + ' candidata(s): unas ' + llamadas +
         ' llamadas a Claude, ≈ $' + (llamadas * COMP_COSTO_ESTIMADO_POR_LLAMADA).toFixed(2) + ' (estimado; el costo real queda en la pestaña Consumo).\n\nNo se guarda nada en tus hojas. ¿Continuar?')) return;
 
       compEntradas = [];

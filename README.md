@@ -205,9 +205,29 @@ Vercel detecta Flask como "framework" en cuanto ve más de un `app = Flask(__nam
 todos en una sola `Flask(__name__)`, y `pyproject.toml` declara
 `[tool.vercel] entrypoint = "api.index:app"`. Las rutas (`/api/actas_start`, etc.) no cambian.
 
+## Qué acta se lee de cada CO (Dinovi, 2026-10-01)
+
+**UNA sola acta por CO**, elegida por `alcance_combiner.seleccionar_acta`:
+1. La **INFR de una visita exitosa** (la más reciente si hay varias).
+2. Si no hay INFR exitosa, la **más reciente de cualquier tipo** (VIPE/NOTE/INST/…) que sea exitosa.
+3. Si ninguna visita con acta fue exitosa, el CO queda "sin acta" (el frontend pasa al modo "sin actas"
+   y usa la hoja maestra / Data cambio NT; el mensaje lista los `estado_visita` que sí encontró).
+
+"Exitosa" = la columna `estado_visita` de la Card 82534 de Metabase vale `Cierre Exitoso` (se compara sin
+importar mayúsculas, acentos ni espacios). Si la tarjeta no trae esa columna se falla con un error claro
+en vez de dejar todos los CO sin acta en silencio.
+
+Antes se leían hasta 5 actas, la más nueva primero, hasta completar los campos obligatorios: eso
+multiplicaba por 2-5 las llamadas a Claude. **Consecuencia aceptada:** lo que esa única acta no traiga
+(p. ej. la relación del TC) queda vacío en vez de completarse con una acta más vieja. No se tocó cómo se
+resuelve el operador de red (`operator_resolver.py`, que sigue usando el acta con PDF más reciente).
+
 ## Por qué "una acta por invocación" (y no un endpoint que procese todo el CO)
 
-Una frontera puede tener hasta 5 actas (`MAX_ACTAS_A_ESCANEAR`), y cada una puede necesitar
+(El razonamiento de abajo es de cuando se leían hasta 5 actas por CO; hoy es UNA, pero el tiempo por
+acta sigue siendo impredecible y por eso cada acta sigue siendo su propia invocación.)
+
+Una frontera podía tener hasta 5 actas (`MAX_ACTAS_A_ESCANEAR`, hoy 1), y cada una puede necesitar
 hasta 2 llamadas al LLM (texto OCR, y PDF completo con imágenes como fallback) más una
 descarga de hasta 20MB y un OCR vía Drive. El propio `Codigo.gs` ya documentaba esto como un
 riesgo de timeout real incluso con los 30 minutos de límite de Apps Script (ver comentario
@@ -256,7 +276,7 @@ y una tabla por modelo+esfuerzo para comparar el antes y el después de un cambi
 ## Comparar modelos (pestaña "Comparar modelos" / `POST /api/comparar_config`)
 
 Para bajar el costo sin perder calidad hay que poder **medir la calidad**: esta pestaña convierte el
-cambio de modelo/esfuerzo en una prueba. Por cada CO toma su acta más reciente, la descarga y la lee con
+cambio de modelo/esfuerzo en una prueba. Por cada CO toma la acta que leería producción (ver "Qué acta se lee de cada CO"), la descarga y la lee con
 OCR UNA vez, y corre la extracción de producción (`analizar_acta_desde_texto`, mismo prompt y mismo
 código) sobre ese MISMO texto con la configuración actual y con 1-3 candidatas (Opus 5.5, Sonnet 5.5,
 distintos esfuerzos — `CONFIGS_CANDIDATAS` en `core/services/comparador.py`; Haiku 4.5 queda fuera

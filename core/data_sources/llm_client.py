@@ -67,6 +67,10 @@ class AnthropicClient:
         # "PyConsumo". Es opcional y NUNCA debe romper una llamada (ver _registrar).
         self.registrador: Callable[[dict], None] | None = None
         self.contexto: dict = {}
+        # Por defecto los de producción (ver los comentarios de TIMEOUT_SEG). La herramienta de
+        # comparación los ajusta al tiempo que le queda dentro de los 60 s de Vercel.
+        self.timeout_seg: float = TIMEOUT_SEG
+        self.max_reintentos: int = MAX_REINTENTOS
 
     def _registrar(self, body: dict, inicio: float, intentos: int, fallidos: int, resultado: str, **extra) -> None:
         if self.registrador is None:
@@ -103,13 +107,13 @@ class AnthropicClient:
         inicio = time.monotonic()
         fallidos = 0  # intentos que no devolvieron 200 (un timeout del cliente puede cobrarse igual)
 
-        for intento in range(1, MAX_REINTENTOS + 1):
+        for intento in range(1, self.max_reintentos + 1):
             try:
-                resp = requests.post(ANTHROPIC_MESSAGES_URL, headers=headers, json=body, timeout=TIMEOUT_SEG)
+                resp = requests.post(ANTHROPIC_MESSAGES_URL, headers=headers, json=body, timeout=self.timeout_seg)
             except requests.RequestException as e:
                 ultimo_error = e
                 fallidos += 1
-                if intento < MAX_REINTENTOS:
+                if intento < self.max_reintentos:
                     time.sleep(BACKOFF_BASE_SEG * (2 ** (intento - 1)))
                 continue
 
@@ -134,7 +138,7 @@ class AnthropicClient:
                     f"Claude respondió HTTP {resp.status_code}: {resp.text[:500]}"
                 )
                 fallidos += 1
-                if intento < MAX_REINTENTOS:
+                if intento < self.max_reintentos:
                     time.sleep(BACKOFF_BASE_SEG * (2 ** (intento - 1)))
                 continue
 
@@ -142,7 +146,7 @@ class AnthropicClient:
             raise RuntimeError(f"Claude respondió HTTP {resp.status_code}: {resp.text[:500]}")
 
         self._registrar(
-            body, inicio, MAX_REINTENTOS, fallidos, "error",
+            body, inicio, self.max_reintentos, fallidos, "error",
             error=type(ultimo_error).__name__ if ultimo_error else "desconocido",
         )
         raise ultimo_error or RuntimeError("Claude: fallo desconocido tras reintentos.")
@@ -153,7 +157,7 @@ class AnthropicClient:
         cambiar ninguno por defecto.
 
         `system_prompt` (ACTA_EXTRACTION_PROMPT_V2, ~2500 tokens) es idéntico en cada llamada
-        de un mismo job — hasta 5 actas por CO, cada una con su propio intento texto+PDF — así
+        de un mismo job — (antes hasta 5 actas por CO; hoy UNA, ver alcance_combiner.seleccionar_acta) — así
         que va con `cache_control: ephemeral` para que Anthropic lo facture como cache-hit
         (~90% más barato) en vez de reprocesarlo entero cada vez.
         """

@@ -34,7 +34,7 @@ def actas_start():
 
     actas_pendientes = alcance_combiner.preparar_actas_pendientes(co, filas_metabase_co)
     if not actas_pendientes:
-        return jsonify({"error": f'"{co}" no tiene ninguna acta VIPE/INFR/NOTE/INST/VICO/NORM/LEGA con act_pdf_url.'}), 404
+        return jsonify({"error": alcance_combiner.motivo_sin_acta(co, filas_metabase_co)}), 404
 
     tiene_acta_instalacion = alcance_combiner.hay_acta_instalacion(filas_metabase_co)
     estado = deps.jobs.crear_o_reiniciar(co, actas_pendientes, tiene_acta_instalacion)

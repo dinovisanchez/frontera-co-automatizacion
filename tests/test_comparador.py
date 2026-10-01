@@ -133,8 +133,9 @@ def api(monkeypatch):
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
     filas = [
-        {"bia_code": "CO0100002908", "service_type_id": "VIPE", "fecha_visita": "2026-02-01", "act_pdf_url": "https://x/reciente.pdf"},
-        {"bia_code": "CO0100002908", "service_type_id": "INST", "fecha_visita": "2025-01-01", "act_pdf_url": "https://x/vieja.pdf"},
+        {"bia_code": "CO0100002908", "service_type_id": "VIPE", "fecha_visita": "2026-02-01", "act_pdf_url": "https://x/reciente.pdf", "estado_visita": "Cierre Exitoso"},
+        {"bia_code": "CO0100002908", "service_type_id": "INST", "fecha_visita": "2025-01-01", "act_pdf_url": "https://x/vieja.pdf", "estado_visita": "Cierre Exitoso"},
+        {"bia_code": "CO0500000005", "service_type_id": "INFR", "fecha_visita": "2026-03-01", "act_pdf_url": "https://x/fallida.pdf", "estado_visita": "Cierre Fallido"},
     ]
     monkeypatch.setattr(comparar_config, "construir_dependencias", lambda: Deps(filas))
     monkeypatch.setattr(comparar_config.acta_downloader, "descargar_pdf_acta", lambda url: ResultadoDescarga(ok=True, bytes_pdf=b"%PDF"))
@@ -151,7 +152,7 @@ def test_endpoint_compara_el_acta_mas_reciente_y_guarda_el_consumo(api, monkeypa
     resp = cliente.post("/api/comparar_config", json={"co": "co0100002908", "indice": 0, "candidatas": ["opus-5-5-medio"]})
 
     cuerpo = resp.get_json()
-    assert resp.status_code == 200 and cuerpo["total_actas"] == 2
+    assert resp.status_code == 200 and cuerpo["total_actas"] == 1  # producción lee UNA acta por CO
     assert cuerpo["acta"] == {"indice": 0, "tipo": "VIPE", "fecha": "2026-02-01", "url": "https://x/reciente.pdf"}
     assert cuerpo["comparaciones"]["opus-5-5-medio"]["coinciden"] == 12 and cuerpo["ocr_caracteres"] == len("texto del acta")
     assert all("registros" not in c for c in cuerpo["configuraciones"])
@@ -159,12 +160,20 @@ def test_endpoint_compara_el_acta_mas_reciente_y_guarda_el_consumo(api, monkeypa
     assert all(r["co"] == "CO0100002908" and r["origen"] == "comparacion" for r in guardados)
 
 
-def test_endpoint_indice_mayor_al_de_actas_disponibles(api):
+def test_endpoint_solo_existe_el_indice_0_porque_se_lee_una_acta(api):
     cliente, _ = api
 
-    cuerpo = cliente.post("/api/comparar_config", json={"co": "CO0100002908", "indice": 3, "candidatas": ["opus-5-5-medio"]}).get_json()
+    assert cliente.post("/api/comparar_config", json={"co": "CO0100002908", "indice": 1, "candidatas": ["opus-5-5-medio"]}).status_code == 400
 
-    assert cuerpo == {"co": "CO0100002908", "total_actas": 2, "sin_acta": True}
+
+def test_endpoint_co_sin_visita_exitosa_explica_el_motivo(api):
+    cliente, _ = api
+
+    resp = cliente.post("/api/comparar_config", json={"co": "CO0500000005", "candidatas": ["opus-5-5-medio"]})
+
+    assert resp.status_code == 404
+    error = resp.get_json()["error"]
+    assert error.startswith('"CO0500000005" no tiene ninguna acta') and "Cierre Fallido" in error  # el frontend reconoce el prefijo
 
 
 @pytest.mark.parametrize("body", [
@@ -187,3 +196,78 @@ def test_endpoint_co_sin_actas(api):
     resp = cliente.post("/api/comparar_config", json={"co": "CO9999999999", "candidatas": ["opus-5-5-medio"]})
 
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------- límite de tiempo (504)
+
+def _reloj(*valores):
+    """time.monotonic simulado: devuelve los valores en orden y después repite el último."""
+    it, ultimo = iter(valores), [valores[-1]]
+
+    def reloj():
+        ultimo[0] = next(it, ultimo[0])
+        return ultimo[0]
+
+    return reloj
+
+
+def test_la_comparacion_hace_un_solo_intento_con_el_tiempo_que_le_dan(monkeypatch):
+    import requests as _requests
+
+    llamadas = []
+
+    def post(url, headers=None, json=None, timeout=None):
+        llamadas.append((json["model"], timeout))
+        raise _requests.Timeout("lento")
+
+    monkeypatch.setattr(llm_client.requests, "post", post)
+    monkeypatch.setattr(llm_client.time, "sleep", lambda s: None)
+
+    r = comparar_acta_texto(META, "texto", CFG, ["sonnet-5-5-medio"], timeout_seg=30)
+
+    assert sorted(llamadas) == [("claude-opus-5", 30), ("claude-sonnet-5-5", 30)]  # 1 intento por configuración, no 3
+    assert all(c["ok"] is False and "No respondió en 30 s" in c["error"] for c in r["configuraciones"])
+
+
+def test_sin_timeout_se_conservan_los_intentos_de_produccion(monkeypatch):
+    import requests as _requests
+
+    intentos = []
+    monkeypatch.setattr(llm_client.requests, "post", lambda *a, **k: (intentos.append(k["timeout"]), (_ for _ in ()).throw(_requests.Timeout("x")))[1])
+    monkeypatch.setattr(llm_client.time, "sleep", lambda s: None)
+
+    comparar_acta_texto(META, "texto", CFG, ["opus-5-5-medio"])
+
+    assert intentos.count(15) == 6  # 2 configuraciones x 3 intentos de 15 s, como en producción
+
+
+def test_endpoint_no_llama_a_claude_si_el_ocr_se_comio_el_tiempo(api, monkeypatch):
+    from api import comparar_config
+
+    cliente, guardados = api
+    monkeypatch.setattr(comparar_config.time, "monotonic", _reloj(0.0, 50.0))  # inicio; tras descargar+OCR: 50 s gastados de 55
+    monkeypatch.setattr(llm_client.requests, "post", lambda *a, **k: pytest.fail("no debía llamar a Claude"))
+
+    cuerpo = cliente.post("/api/comparar_config", json={"co": "CO0100002908", "candidatas": ["opus-5-5-medio"]}).get_json()
+
+    assert "ya no quedaba tiempo" in cuerpo["error"] and "No se gastó nada" in cuerpo["error"]
+    assert guardados == []
+
+
+def test_endpoint_pasa_a_claude_el_tiempo_que_queda(api, monkeypatch):
+    from api import comparar_config
+
+    cliente, _ = api
+    monkeypatch.setattr(comparar_config.time, "monotonic", _reloj(0.0, 20.0))  # 20 s gastados: quedan 35, menos 5 de margen = 30 s por llamada
+    timeouts = []
+
+    def post(url, headers=None, json=None, timeout=None):
+        timeouts.append(timeout)
+        return Resp(200, {"content": [{"type": "text", "text": _json(tipo_medida_actual="directa")}], "usage": {"input_tokens": 10, "output_tokens": 5}})
+
+    monkeypatch.setattr(llm_client.requests, "post", post)
+    monkeypatch.setattr(llm_client.time, "sleep", lambda s: None)
+
+    cliente.post("/api/comparar_config", json={"co": "CO0100002908", "candidatas": ["opus-5-5-medio"]})
+
+    assert timeouts and set(timeouts) == {30.0}
