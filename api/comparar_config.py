@@ -10,6 +10,8 @@ GASTA API de Claude (≈ una extracción por configuración); no guarda nada en 
 solo deja el consumo en "PyConsumo" con origen "comparacion".
 """
 
+import time
+
 from flask import Blueprint, jsonify, request
 
 from config.settings import cargar_anthropic_config
@@ -22,9 +24,18 @@ from core.utils import normalizar_codigo
 
 bp = Blueprint("comparar_config", __name__)
 
+# La función de Vercel muere a los 60 s (vercel.json) y entrega un 504 SIN resultado. Se reserva un
+# margen y lo que quede después de descargar + leer el acta es el tiempo máximo de Claude; si ya no
+# alcanza para una llamada razonable, NO se llama a Claude (no se gasta nada) y se avisa.
+PRESUPUESTO_SEG = 55
+MARGEN_SEG = 5
+MIN_SEG_PARA_CLAUDE = 15
+MAX_SEG_POR_LLAMADA = 45
+
 
 @bp.post("/api/comparar_config")
 def comparar_config():
+    inicio = time.monotonic()
     body = request.get_json(force=True, silent=True) or {}
     co_raw = body.get("co")
     if not co_raw:
@@ -63,8 +74,15 @@ def comparar_config():
     if not ocr.ok:
         return jsonify({"co": co, "total_actas": len(actas), "acta": acta, "error": f"El OCR del acta falló: {ocr.motivo_fallo}"})
 
+    restante = PRESUPUESTO_SEG - (time.monotonic() - inicio)
+    if restante < MIN_SEG_PARA_CLAUDE + MARGEN_SEG:
+        return jsonify({"co": co, "total_actas": len(actas), "acta": acta, "error": (
+            f"Descargar y leer el acta tardó demasiado ({PRESUPUESTO_SEG - restante:.0f} s) y ya no quedaba tiempo para llamar a Claude. "
+            "No se gastó nada. Reintenta este CO.")})
+    timeout_seg = min(MAX_SEG_POR_LLAMADA, restante - MARGEN_SEG)
+
     meta = MetadatosActa(co=co, tipo_acta=fila.get("service_type_id", "?"), fecha_visita=fila.get("fecha_visita", ""))
-    resultado = comparar_acta_texto(meta, ocr.texto, cargar_anthropic_config(), candidatas)
+    resultado = comparar_acta_texto(meta, ocr.texto, cargar_anthropic_config(), candidatas, timeout_seg=timeout_seg)
 
     # El consumo de la comparación queda en PyConsumo (origen "comparacion"), en secuencia.
     store = get_consumo_store(deps.sheets)
