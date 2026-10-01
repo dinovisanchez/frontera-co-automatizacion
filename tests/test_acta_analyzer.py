@@ -60,3 +60,24 @@ def test_spec_none_si_el_llm_no_devuelve_json_valido():
     resultado = analizar_acta_desde_texto(meta, "texto ocr de prueba", llm)
 
     assert resultado.spec is None
+
+
+def test_se_puede_pasar_otro_system_prompt_y_una_respuesta_solo_json_se_parsea():
+    from core.prompts.acta_extraction_prompt import ACTA_EXTRACTION_PROMPT_V2, ACTA_EXTRACTION_PROMPT_V2_SOLO_JSON
+
+    enviados = []
+
+    class Capturador(AnthropicClientFalso):
+        def enviar(self, body: dict) -> str:
+            enviados.append(body["system"][0]["text"])
+            return '```json\n{"tipo_medida_actual": "semidirecta", "capacidad_instalada_kva": 75}\n```'  # sin RESUMEN
+
+    meta = MetadatosActa(co="CO0100002908", tipo_acta="VIPE", fecha_visita="2026-01-01")
+    llm = Capturador("")
+
+    por_defecto = analizar_acta_desde_texto(meta, "ocr", llm)
+    variante = analizar_acta_desde_texto(meta, "ocr", llm, system_prompt=ACTA_EXTRACTION_PROMPT_V2_SOLO_JSON)
+
+    assert enviados == [ACTA_EXTRACTION_PROMPT_V2, ACTA_EXTRACTION_PROMPT_V2_SOLO_JSON]  # producción sigue usando V2
+    assert por_defecto.spec["tipo_medida_actual"] == variante.spec["tipo_medida_actual"] == "semidirecta"
+    assert variante.resumen == ""  # nadie lo usa; que falte no rompe nada

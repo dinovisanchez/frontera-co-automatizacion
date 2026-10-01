@@ -60,6 +60,17 @@ ACTA_EXTRACTION_PROMPT_V2 = ACTA_EXTRACTION_PROMPT_V1.replace(
 )
 
 
+# Variante "solo JSON" (Dinovi, 2026-10-01, reducción de costos): V1/V2 le piden a Claude escribir cada campo DOS
+# veces — primero un bloque "RESUMEN:" de una línea por campo y luego el JSON — y el código solo lee el JSON
+# (RespuestaActa.resumen no lo usa nadie). Los tokens de SALIDA son los más caros ($25/MTok en Opus 5, $10 en
+# Sonnet 5.5). NO está en producción: solo la usa la pestaña "Comparar modelos" para medir si pedir solo el JSON
+# baja el costo sin cambiar lo extraído. Mismo texto que V2 salvo el bloque de formato (ver tests).
+ACTA_EXTRACTION_PROMPT_V2_SOLO_JSON = ACTA_EXTRACTION_PROMPT_V2.replace(
+    'RESUMEN:\nUna línea por cada campo del JSON de arriba, formato EXACTO "campo: valor" — nada más.\n\nANALISIS_LISTO\n```json',
+    'Responde ÚNICAMENTE con el bloque JSON de abajo — sin bloque RESUMEN y sin ningún texto antes ni después (el sistema solo lee el JSON).\n```json',
+)
+
+
 # Campos que alcance_combiner.py intenta llenar combinando varias actas (puerto de
 # CAMPOS_A_COMBINAR_ALCANCE, Codigo.gs línea 2164). relacion_tc/relacion_tp/montaje_tc/
 # totalizador_amperios/conductor_calibre son "bono": se toman si alguna acta los trae, pero
