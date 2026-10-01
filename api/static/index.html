@@ -1668,6 +1668,9 @@
           det += '<div class="item warn">' + escapeHtml(e.error || e.data.error) + '</div></div>';
           return;
         }
+        (e.data.omitidas || []).forEach(function (o) {
+          det += '<div class="item warn">Se omitió el acta ' + escapeHtml(o.tipo || '?') + ' ' + escapeHtml(o.fecha || '') + ' (no se pudo leer): ' + escapeHtml(o.motivo) + '. Se usó la siguiente candidata.</div>';
+        });
         var base = e.data.configuraciones[0];
         if (!base.ok) det += '<div class="item warn">La configuración actual no devolvió resultado (' + escapeHtml(base.error || '') + '): no hay referencia para comparar.</div>';
         e.data.configuraciones.slice(1).forEach(function (cfg) {

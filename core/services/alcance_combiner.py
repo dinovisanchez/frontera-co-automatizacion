@@ -18,13 +18,18 @@ from core.services import acta_downloader, acta_ocr
 from core.services.acta_analyzer import MetadatosActa, analizar_acta_desde_pdf, analizar_acta_desde_texto
 from core.services.acta_cache import get_acta_cache
 from core.services.job_store import EstadoJob
+from core.validators.alcance_schema import CAMPOS_ESQUEMA_ACTA
 from core.utils import normalizar_codigo, quitar_acentos
 
 # Regla de selección (Dinovi, 2026-10-01: "no revises todas las actas"): UNA sola acta por CO —
 # la INFR de una visita exitosa; si no hay INFR exitosa, la más reciente de cualquier tipo que
 # sea exitosa. Antes se leían hasta 5 (la más nueva primero) hasta completar los campos, lo que
-# multiplicaba el costo de Claude por 2-5 y no era la regla de negocio.
-MAX_ACTAS_A_ESCANEAR = 1
+# multiplicaba el costo de Claude por 2-5 y no era la regla de negocio. Las candidatas siguientes solo
+# entran en juego si la elegida no se puede leer (falla técnica), nunca por campos faltantes.
+# Se lee UNA acta por CO. Este tope es de actas CANDIDATAS que se prueban en orden de preferencia SOLO si
+# la anterior no se pudo leer (PDF inválido, muy grande, OCR caído, o sin ningún dato útil): en el caso
+# normal la primera se lee bien y ahí termina (ver procesar_siguiente_acta).
+MAX_ACTAS_A_ESCANEAR = 3
 TIPO_ACTA_PREFERIDA = "INFR"
 COLUMNA_ESTADO_VISITA = "estado_visita"  # columna de la Card 82534 de Metabase
 ESTADO_VISITA_EXITOSA = "Cierre Exitoso"
@@ -69,20 +74,33 @@ def _filas_con_acta(filas_metabase_co: list[dict]) -> list[dict]:
     return filas
 
 
+def seleccionar_actas_ordenadas(filas_metabase_co: list[dict]) -> list[dict]:
+    """Actas de visitas EXITOSAS en orden de preferencia: primero las INFR (la más reciente primero),
+    después las de cualquier otro tipo (la más reciente primero). La primera es LA acta que se lee; las
+    demás son el respaldo si esa no se puede leer. Una URL repetida (una por equipo de la visita) cuenta
+    una vez."""
+    por_url: dict[str, dict] = {}
+    for r in _filas_con_acta(filas_metabase_co):
+        if not es_visita_exitosa(r):
+            continue
+        url = r["act_pdf_url"]
+        if url not in por_url or (r.get("fecha_visita") or "") > (por_url[url].get("fecha_visita") or ""):
+            por_url[url] = r
+    por_fecha = sorted(por_url.values(), key=lambda r: r.get("fecha_visita") or "", reverse=True)
+    return sorted(por_fecha, key=lambda r: (r.get("service_type_id") or "").upper() != TIPO_ACTA_PREFERIDA)  # estable: INFR primero
+
+
 def seleccionar_acta(filas_metabase_co: list[dict]) -> dict | None:
-    """La ÚNICA acta que se lee de un CO: la INFR exitosa más reciente; si no hay INFR exitosa, la
-    exitosa más reciente de cualquier tipo; None si ninguna visita con acta fue exitosa."""
-    exitosas = [r for r in _filas_con_acta(filas_metabase_co) if es_visita_exitosa(r)]
-    infr = [r for r in exitosas if (r.get("service_type_id") or "").upper() == TIPO_ACTA_PREFERIDA]
-    elegibles = infr or exitosas
-    return max(elegibles, key=lambda r: r.get("fecha_visita") or "") if elegibles else None
+    """La acta que se lee de un CO: la INFR exitosa más reciente; si no hay INFR exitosa, la exitosa
+    más reciente de cualquier tipo; None si ninguna visita con acta fue exitosa."""
+    ordenadas = seleccionar_actas_ordenadas(filas_metabase_co)
+    return ordenadas[0] if ordenadas else None
 
 
 def preparar_actas_pendientes(co: str, filas_metabase_co: list[dict]) -> list[dict]:
-    """Lista de actas por leer del CO: [la acta elegida] o [] (ver seleccionar_acta). Se conserva
-    como lista porque el job de actas (actas_pendientes) y sus llamadores trabajan sobre una cola."""
-    acta = seleccionar_acta(filas_metabase_co)
-    return [acta] if acta else []
+    """Cola de actas del CO en orden de preferencia (máx. MAX_ACTAS_A_ESCANEAR). Solo la primera se lee si
+    sale bien; las siguientes son respaldo ante una falla técnica (ver procesar_siguiente_acta)."""
+    return seleccionar_actas_ordenadas(filas_metabase_co)[:MAX_ACTAS_A_ESCANEAR]
 
 
 def motivo_sin_acta(co: str, filas_metabase_co: list[dict]) -> str:
@@ -94,6 +112,15 @@ def motivo_sin_acta(co: str, filas_metabase_co: list[dict]) -> str:
     estados = sorted({str(r.get(COLUMNA_ESTADO_VISITA) or "(vacío)") for r in filas})
     return (f'"{co}" no tiene ninguna acta de una visita exitosa ({COLUMNA_ESTADO_VISITA} = "{ESTADO_VISITA_EXITOSA}"): '
             f'tiene {len(filas)} fila(s) con acta, con estado(s): {", ".join(estados)}.')
+
+
+_CAMPOS_TECNICOS = tuple(c for c in CAMPOS_ESQUEMA_ACTA if c not in ("observaciones", "supuestos"))
+
+
+def _spec_sin_datos(spec: dict) -> bool:
+    """Una extracción con TODOS los campos técnicos vacíos es un acta que no sirvió (documento ajeno,
+    OCR ilegible…): se trata como falla técnica para probar la siguiente candidata, no como lectura."""
+    return all(spec.get(c) in (None, "", []) for c in _CAMPOS_TECNICOS)
 
 
 def _faltan_campos(spec_combinado: dict) -> bool:
@@ -189,13 +216,19 @@ def procesar_siguiente_acta(
         if spec_final and cache:
             cache.guardar(url, spec_final)
 
-    if spec_final:
+    if spec_final and not _spec_sin_datos(spec_final):
         _combinar_en(estado, fila, etiqueta, spec_final)
+        # UNA acta por CO (Dinovi, 2026-10-01): con una lectura útil se termina, aunque falten campos.
+        # Las candidatas de respaldo solo se prueban cuando la anterior NO se pudo leer.
+        estado.actas_pendientes.clear()
+    elif spec_final:
+        estado.observaciones.append(
+            f"[{etiqueta}] el acta no trajo ningún dato útil" + ("; se prueba la siguiente." if estado.actas_pendientes else ".")
+        )
     else:
         estado.observaciones.append(f"[{etiqueta}] no se pudo extraer ningún campo (ni texto ni imagen)")
 
-    completo = not estado.actas_pendientes or not _faltan_campos(estado.spec_combinado)
-    return ResultadoPaso(completo=completo, estado=estado)
+    return ResultadoPaso(completo=not estado.actas_pendientes, estado=estado)
 
 
 def acta_resultado_desde_estado(estado: EstadoJob) -> dict | None:
