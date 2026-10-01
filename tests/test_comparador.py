@@ -331,7 +331,7 @@ def test_endpoint_pasa_a_claude_el_tiempo_que_queda(api, monkeypatch):
 
 # ---------------------------------------------------------------- variantes de prompt
 
-def test_las_candidatas_solo_json_usan_el_prompt_sin_resumen_y_la_actual_sigue_con_v2(monkeypatch):
+def test_la_actual_y_las_candidatas_usan_el_prompt_de_produccion_y_el_control_usa_el_anterior(monkeypatch):
     enviados = []
 
     def post(url, headers=None, json=None, timeout=None):
@@ -341,16 +341,15 @@ def test_las_candidatas_solo_json_usan_el_prompt_sin_resumen_y_la_actual_sigue_c
     monkeypatch.setattr(llm_client.requests, "post", post)
     monkeypatch.setattr(llm_client.time, "sleep", lambda s: None)
 
-    r = comparar_acta_texto(META, "texto ocr", CFG, ["opus-5-json", "opus-5-bajo-json", "sonnet-5-5-medio-json"])
+    r = comparar_acta_texto(META, "texto ocr", CFG, ["sonnet-5-5-medio", "opus-5-prompt-anterior"])
 
     # (modelo, esfuerzo, ¿el prompt pide el RESUMEN?)
     assert sorted(enviados) == sorted([
-        ("claude-opus-5", "medium", True),      # la actual: V2 de producción
-        ("claude-opus-5", "medium", False),     # opus-5-json: mismo modelo y esfuerzo, solo cambia el prompt
-        ("claude-opus-5", "low", False),        # opus-5-bajo-json
-        ("claude-sonnet-5-5", "medium", False),  # sonnet-5-5-medio-json
+        ("claude-opus-5", "medium", False),      # la actual: V3 de producción (sin RESUMEN)
+        ("claude-sonnet-5-5", "medium", False),  # sonnet-5-5-medio: el de producción por defecto
+        ("claude-opus-5", "medium", True),       # opus-5-prompt-anterior: control con V2 (con RESUMEN)
     ])
-    assert all(c["ok"] for c in r["configuraciones"]) and set(r["comparaciones"]) == {"opus-5-json", "opus-5-bajo-json", "sonnet-5-5-medio-json"}
+    assert all(c["ok"] for c in r["configuraciones"]) and set(r["comparaciones"]) == {"sonnet-5-5-medio", "opus-5-prompt-anterior"}
 
 
 def test_todas_las_candidatas_ofrecidas_tienen_modelo_con_precio_y_prompt_valido():
@@ -358,5 +357,5 @@ def test_todas_las_candidatas_ofrecidas_tienen_modelo_con_precio_y_prompt_valido
 
     for cid, c in comparador.CONFIGS_CANDIDATAS.items():
         assert c["modelo"] in PRECIOS_USD_POR_MTOK, cid  # si no, su costo saldría en blanco
-        assert c.get("prompt", "v2") in comparador.PROMPTS, cid
+        assert c.get("prompt", comparador.PROMPT_PRODUCCION) in comparador.PROMPTS, cid
         assert c["esfuerzo"] in ("low", "medium", "high"), cid

@@ -23,7 +23,7 @@ from dataclasses import replace
 
 from config.settings import AnthropicConfig
 from core.data_sources.llm_client import AnthropicClient
-from core.prompts.acta_extraction_prompt import ACTA_EXTRACTION_PROMPT_V2, ACTA_EXTRACTION_PROMPT_V2_SOLO_JSON
+from core.prompts.acta_extraction_prompt import ACTA_EXTRACTION_PROMPT_V2, ACTA_EXTRACTION_PROMPT_V3
 from core.services.acta_analyzer import MetadatosActa, analizar_acta_desde_texto
 from core.services.consumo import costo_usd
 from core.services.tarifa_calculator import normalizar_texto_opex
@@ -31,21 +31,22 @@ from core.validators.alcance_schema import CAMPOS_ESQUEMA_ACTA
 
 ID_ACTUAL = "actual"
 
-# Prompts que se pueden probar. "v2" es el de producción; "solo_json" no pide el bloque RESUMEN (que nadie lee).
-PROMPTS = {"v2": ACTA_EXTRACTION_PROMPT_V2, "solo_json": ACTA_EXTRACTION_PROMPT_V2_SOLO_JSON}
+# Prompts que se pueden probar. "v3" es el de producción (sin el bloque RESUMEN que nadie lee); "v2" es el
+# anterior (con RESUMEN) y sirve de control para volver a medir que el cambio no alteró lo extraído.
+PROMPT_PRODUCCION = "v3"
+PROMPTS = {"v2": ACTA_EXTRACTION_PROMPT_V2, "v3": ACTA_EXTRACTION_PROMPT_V3}
 
-# Candidatas ofrecidas (modelo, esfuerzo, prompt). Haiku 4.5 queda fuera a propósito: no acepta `effort`.
+# Candidatas ofrecidas (modelo, esfuerzo, prompt; sin "prompt" usan el de producción).
+# Haiku 4.5 queda fuera a propósito: no acepta `effort`.
 CONFIGS_CANDIDATAS = {
-    # Mismo modelo y esfuerzo que producción, pero pidiendo SOLO el JSON: aísla el efecto del prompt.
-    "opus-5-json": {"modelo": "claude-opus-5", "esfuerzo": "medium", "prompt": "solo_json", "nombre": "Opus 5 (el actual) · solo JSON"},
-    # Lo anterior + menos razonamiento: aísla el efecto del esfuerzo.
-    "opus-5-bajo-json": {"modelo": "claude-opus-5", "esfuerzo": "low", "prompt": "solo_json", "nombre": "Opus 5 · esfuerzo bajo · solo JSON"},
-    "sonnet-5-5-medio-json": {"modelo": "claude-sonnet-5-5", "esfuerzo": "medium", "prompt": "solo_json", "nombre": "Sonnet 5.5 · esfuerzo medio · solo JSON"},
-    "opus-5-5-medio": {"modelo": "claude-opus-5-5", "esfuerzo": "medium", "nombre": "Opus 5.5 · esfuerzo medio"},
-    "opus-5-5-bajo": {"modelo": "claude-opus-5-5", "esfuerzo": "low", "nombre": "Opus 5.5 · esfuerzo bajo"},
     "sonnet-5-5-medio": {"modelo": "claude-sonnet-5-5", "esfuerzo": "medium", "nombre": "Sonnet 5.5 · esfuerzo medio"},
+    # Control: el mismo Opus 5 de producción pero con el prompt anterior (con RESUMEN). Si sale idéntico a la
+    # actual en muchas actas, confirma que quitar el RESUMEN no cambió lo extraído.
+    "opus-5-prompt-anterior": {"modelo": "claude-opus-5", "esfuerzo": "medium", "prompt": "v2", "nombre": "Opus 5 · prompt anterior (con RESUMEN)"},
     "sonnet-5-5-bajo": {"modelo": "claude-sonnet-5-5", "esfuerzo": "low", "nombre": "Sonnet 5.5 · esfuerzo bajo"},
     "opus-5-bajo": {"modelo": "claude-opus-5", "esfuerzo": "low", "nombre": "Opus 5 · esfuerzo bajo"},
+    "opus-5-5-medio": {"modelo": "claude-opus-5-5", "esfuerzo": "medium", "nombre": "Opus 5.5 · esfuerzo medio"},
+    "opus-5-5-bajo": {"modelo": "claude-opus-5-5", "esfuerzo": "low", "nombre": "Opus 5.5 · esfuerzo bajo"},
 }
 MAX_CANDIDATAS = 3
 
@@ -108,7 +109,7 @@ def comparar_specs(actual: dict | None, candidata: dict | None) -> dict:
 
 
 def _extraer(
-    meta: MetadatosActa, texto_ocr: str, cfg: AnthropicConfig, config_id: str, timeout_seg: float | None = None, prompt: str = "v2",
+    meta: MetadatosActa, texto_ocr: str, cfg: AnthropicConfig, config_id: str, timeout_seg: float | None = None, prompt: str = PROMPT_PRODUCCION,
 ) -> dict:
     """Corre la extracción de producción (analizar_acta_desde_texto) con `cfg` sobre el texto dado.
 
@@ -151,10 +152,10 @@ def comparar_acta_texto(
     meta: MetadatosActa, texto_ocr: str, cfg_actual: AnthropicConfig, ids_candidatas: list[str], timeout_seg: float | None = None,
 ) -> dict:
     """La configuración actual + cada candidata, en paralelo, sobre el MISMO texto de acta."""
-    configs = [(ID_ACTUAL, cfg_actual, "v2")]
+    configs = [(ID_ACTUAL, cfg_actual, PROMPT_PRODUCCION)]
     for cid in ids_candidatas:
         c = CONFIGS_CANDIDATAS[cid]
-        configs.append((cid, replace(cfg_actual, model=c["modelo"], effort=c["esfuerzo"]), c.get("prompt", "v2")))
+        configs.append((cid, replace(cfg_actual, model=c["modelo"], effort=c["esfuerzo"]), c.get("prompt", PROMPT_PRODUCCION)))
 
     with ThreadPoolExecutor(max_workers=len(configs)) as pool:
         resultados = list(pool.map(lambda c: _extraer(meta, texto_ocr, c[1], c[0], timeout_seg, c[2]), configs))

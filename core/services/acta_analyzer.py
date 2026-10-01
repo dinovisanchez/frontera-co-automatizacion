@@ -11,7 +11,7 @@ import base64
 from dataclasses import dataclass
 
 from core.data_sources.llm_client import AnthropicClient, contexto_llamada
-from core.prompts.acta_extraction_prompt import ACTA_EXTRACTION_PROMPT_V2
+from core.prompts.acta_extraction_prompt import ACTA_EXTRACTION_PROMPT_V2, ACTA_EXTRACTION_PROMPT_V3
 from core.validators.alcance_schema import RespuestaActa, normalizar_spec_acta, parsear_respuesta_alcance
 
 
@@ -31,11 +31,12 @@ def _instruccion_comun(meta: MetadatosActa) -> str:
 
 
 def analizar_acta_desde_texto(
-    meta: MetadatosActa, texto_ocr: str, llm: AnthropicClient, system_prompt: str = ACTA_EXTRACTION_PROMPT_V2,
+    meta: MetadatosActa, texto_ocr: str, llm: AnthropicClient, system_prompt: str = ACTA_EXTRACTION_PROMPT_V3,
 ) -> RespuestaActa:
     """Puerto de bodyClaudeActaTexto — intento rápido, SOLO texto (OCR), sin imágenes.
 
-    `system_prompt`: producción usa siempre V2; la pestaña "Comparar modelos" pasa variantes para medirlas."""
+    `system_prompt`: producción usa V3 (V2 sin el RESUMEN que nadie lee); la pestaña "Comparar modelos" pasa
+    variantes para medirlas."""
     instruccion = (
         "Adjunto el TEXTO (extraído por OCR, puede tener errores de reconocimiento — si algo "
         "queda ilegible o ambiguo, prefiere dejarlo en null antes que adivinar) del acta de "
@@ -58,6 +59,7 @@ def analizar_acta_desde_pdf(meta: MetadatosActa, pdf_bytes: bytes, llm: Anthropi
         f"Adjunto el acta de visita ({meta.tipo_acta}, {meta.fecha_visita}) de la frontera "
         f"{meta.co}. " + _instruccion_comun(meta)
     )
+    # V2 a propósito: el cambio a V3 (sin RESUMEN) solo se midió sobre texto OCR, no sobre PDF.
     body = llm.cuerpo_extraccion_acta(
         ACTA_EXTRACTION_PROMPT_V2,
         [

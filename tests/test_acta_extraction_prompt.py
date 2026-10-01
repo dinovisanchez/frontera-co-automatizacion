@@ -67,17 +67,17 @@ def test_campos_a_combinar_no_incluye_los_bono():
         assert campo_bono not in CAMPOS_A_COMBINAR_ALCANCE
 
 
-def test_variante_solo_json_es_v2_salvo_el_bloque_de_formato():
-    from core.prompts.acta_extraction_prompt import ACTA_EXTRACTION_PROMPT_V2_SOLO_JSON as SOLO_JSON
+def test_v3_es_v2_salvo_el_bloque_de_formato():
+    from core.prompts.acta_extraction_prompt import ACTA_EXTRACTION_PROMPT_V3 as V3
 
     marca = "=== FORMATO DE RESPUESTA"
-    # Todas las reglas y el esquema son literalmente los de producción (V2): solo cambia cómo se pide la salida.
-    assert SOLO_JSON[: SOLO_JSON.index(marca)] == ACTA_EXTRACTION_PROMPT_V2[: ACTA_EXTRACTION_PROMPT_V2.index(marca)]
-    assert SOLO_JSON != ACTA_EXTRACTION_PROMPT_V2  # el reemplazo sí ocurrió
-    assert "ANALISIS_LISTO" not in SOLO_JSON and 'campo: valor' not in SOLO_JSON  # ya no pide el bloque de líneas
-    assert "ÚNICAMENTE con el bloque JSON" in SOLO_JSON and "```json" in SOLO_JSON
+    # Todas las reglas y el esquema son literalmente los de V2: solo cambia cómo se pide la salida.
+    assert V3[: V3.index(marca)] == ACTA_EXTRACTION_PROMPT_V2[: ACTA_EXTRACTION_PROMPT_V2.index(marca)]
+    assert V3 != ACTA_EXTRACTION_PROMPT_V2  # el reemplazo sí ocurrió
+    assert "ANALISIS_LISTO" not in V3 and 'campo: valor' not in V3  # ya no pide el bloque de líneas
+    assert "ÚNICAMENTE con el bloque JSON" in V3 and "```json" in V3
 
 
-def test_v2_de_produccion_sigue_pidiendo_el_resumen():
-    # La variante no debe haber tocado el prompt de producción.
+def test_v2_se_conserva_con_el_resumen():
+    # V2 sigue intacto (lo usa la lectura por PDF y el control de "Comparar modelos").
     assert "ANALISIS_LISTO" in ACTA_EXTRACTION_PROMPT_V2 and 'formato EXACTO "campo: valor"' in ACTA_EXTRACTION_PROMPT_V2

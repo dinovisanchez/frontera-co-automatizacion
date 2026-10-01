@@ -1618,14 +1618,12 @@
     // ---------- Comparar modelos: ¿una configuración más barata extrae lo mismo? (/api/comparar_config) ----------
     // Los ids deben coincidir con CONFIGS_CANDIDATAS de core/services/comparador.py.
     var COMP_CANDIDATAS = [
-      { id: 'opus-5-json', nombre: 'Opus 5 (el actual) · solo JSON', nota: 'mismo modelo; no pide el RESUMEN que nadie lee → menos tokens de salida', marcada: true },
-      { id: 'opus-5-bajo-json', nombre: 'Opus 5 · esfuerzo bajo · solo JSON', nota: 'lo anterior + menos razonamiento', marcada: true },
-      { id: 'sonnet-5-5-medio-json', nombre: 'Sonnet 5.5 · esfuerzo medio · solo JSON', nota: '60 % más barato por token', marcada: true },
-      { id: 'sonnet-5-5-medio', nombre: 'Sonnet 5.5 · esfuerzo medio', nota: '60 % más barato por token (probado: deja campos vacíos, sobre todo nivel_tension)' },
+      { id: 'sonnet-5-5-medio', nombre: 'Sonnet 5.5 · esfuerzo medio', nota: '60 % más barato por token; con el prompt actual llenó nivel_tension en 3 de 3 actas (pocas: falta confirmar)', marcada: true },
+      { id: 'opus-5-prompt-anterior', nombre: 'Opus 5 · prompt anterior (con RESUMEN)', nota: 'control: confirma que quitar el RESUMEN no cambió lo extraído', marcada: true },
+      { id: 'sonnet-5-5-bajo', nombre: 'Sonnet 5.5 · esfuerzo bajo', nota: '60 % más barato y menos razonamiento' },
+      { id: 'opus-5-bajo', nombre: 'Opus 5 · esfuerzo bajo', nota: 'probado: ahorra solo 1 punto más y no vale el riesgo' },
       { id: 'opus-5-5-medio', nombre: 'Opus 5.5 · esfuerzo medio', nota: 'probado: coincide pero NO ahorra (razona más)' },
-      { id: 'opus-5-5-bajo', nombre: 'Opus 5.5 · esfuerzo bajo', nota: '20 % más barato por token y menos razonamiento' },
-      { id: 'opus-5-bajo', nombre: 'Opus 5 · esfuerzo bajo', nota: 'mismo precio por token, menos razonamiento' },
-      { id: 'sonnet-5-5-bajo', nombre: 'Sonnet 5.5 · esfuerzo bajo', nota: '60 % más barato y menos razonamiento' }
+      { id: 'opus-5-5-bajo', nombre: 'Opus 5.5 · esfuerzo bajo', nota: 'probado: tampoco ahorra' }
     ];
     var COMP_COSTO_ESTIMADO_POR_LLAMADA = 0.05;  // USD, típico de la configuración actual; el real queda en "Consumo"
     var compEntradas = [];  // una por acta: { co, data | error }
