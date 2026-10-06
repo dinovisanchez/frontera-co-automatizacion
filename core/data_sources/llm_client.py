@@ -178,6 +178,15 @@ class AnthropicClient:
         body["output_config"] = {"effort": self._cfg.effort_acta_texto}
         return body
 
+    def cuerpo_extraccion_puntual_texto(self, system_prompt: str, contenido_mensaje: list[dict], max_tokens: int) -> dict:
+        """Pregunta puntual sobre el TEXTO ya extraído de un documento (no sobre el PDF): usa el modelo y el
+        esfuerzo de la lectura de actas por texto (`model_acta_texto` / `effort_acta_texto`, hoy Sonnet 5.5 ·
+        medio) — el mismo que ya está probado con ese modelo — en vez de Opus. `max_tokens` holgado: el
+        razonamiento también cuenta como salida y, si se corta, no llega la respuesta."""
+        body = self.cuerpo_extraccion_puntual(system_prompt, contenido_mensaje, max_tokens=max_tokens, effort=self._cfg.effort_acta_texto)
+        body["model"] = self._cfg.model_acta_texto
+        return body
+
     def cuerpo_extraccion_puntual(
         self, system_prompt: str, contenido_mensaje: list[dict], max_tokens: int, effort: str
     ) -> dict:

@@ -864,6 +864,14 @@
         destinoOpex.innerHTML = '';
         fetchJSON('POST', '/api/opex_resolver', body).then(function (opex) {
           setRunning(id + '_btnOpex', id + '_spinnerOpex', false);
+          if (opex.pendiente_operador) {
+            // El backend responde 202 cuando no logra determinar el OR (no está en la hoja "Data" y el acta no se pudo
+            // leer: PDF enorme, HTTP 413…). Antes esta respuesta se pintaba como una tabla vacía, sin ningún aviso.
+            destinoOpex.innerHTML = '<div class="item warn">⚠ No se pudo determinar el operador de red' +
+              (opex.motivo ? ': ' + escapeHtml(opex.motivo) : '.') +
+              ' Escribe el OR en el campo "OR manual" de esta tarjeta y vuelve a calcular la mano de obra.</div>';
+            return;
+          }
           pintarTablaOpex(opex, destinoOpex);
         }).catch(function (err) {
           setRunning(id + '_btnOpex', id + '_spinnerOpex', false);

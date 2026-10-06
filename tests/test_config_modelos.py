@@ -34,6 +34,16 @@ def test_solo_la_lectura_por_texto_usa_sonnet():
     assert texto["system"][0]["cache_control"] == {"type": "ephemeral"}
 
 
+def test_la_pregunta_puntual_por_texto_usa_sonnet_y_la_puntual_por_pdf_sigue_con_opus():
+    llm = AnthropicClient(AnthropicConfig(api_key="x"))
+
+    por_texto = llm.cuerpo_extraccion_puntual_texto(SISTEMA, MENSAJE, max_tokens=1000)
+    por_pdf = llm.cuerpo_extraccion_puntual(SISTEMA, MENSAJE, max_tokens=300, effort="low")
+
+    assert (por_texto["model"], por_texto["output_config"], por_texto["max_tokens"]) == ("claude-sonnet-5-5", {"effort": "medium"}, 1000)
+    assert (por_pdf["model"], por_pdf["output_config"], por_pdf["max_tokens"]) == ("claude-opus-5", {"effort": "low"}, 300)
+
+
 def test_sin_variables_opcionales_rige_el_default(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     monkeypatch.delenv("ACTA_TEXTO_MODELO", raising=False)
