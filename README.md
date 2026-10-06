@@ -290,7 +290,9 @@ y una tabla por modelo+esfuerzo para comparar el antes y el después de un cambi
 |---|---|---|
 | Lectura del acta por **TEXTO** (OCR) — la más frecuente y la que más gasta | **Sonnet 5.5** · medio (`model_acta_texto` / `effort_acta_texto`) | V3 (solo JSON) |
 | Lectura del acta por PDF (rara: solo si el texto no se pudo extraer) | Opus 5 · medio (`model` / `effort`) | V2 |
-| Operador de red desde un acta, relación certificada de un TC/TP | Opus 5 · bajo | los suyos |
+| **Operador de red** desde un acta (solo si no está en la hoja "Data"), **por TEXTO** OCR | **Sonnet 5.5** · medio | `OR_EXTRACTION_PROMPT_V1` |
+| Operador de red por **PDF completo** (solo si el texto no lo trajo y el PDF pesa < 18 MB) | Opus 5 · bajo | `OR_EXTRACTION_PROMPT_V1` |
+| Relación certificada de un TC/TP (PDF) | Opus 5 · bajo | el suyo |
 
 - **Por qué Sonnet:** en "Comparar modelos" costó ≈ −62 % por acta frente a Opus 5 (≈ $0,02 contra ≈ $0,05) y con el
   prompt V3 coincidió en 35 de 36 campos en 3 actas (solo dejó vacío `ubicacion_medida` en una). Son pocas actas:
@@ -300,6 +302,12 @@ y una tabla por modelo+esfuerzo para comparar el antes y el después de un cambi
   campo vacío entra a las reglas igual que cuando un acta no lo menciona (es el caso de cualquier acta incompleta,
   y el dictamen manual del usuario sigue disponible); no dispara la lectura por PDF (esa solo corre si el texto no
   se pudo leer del todo). La propuesta se sigue revisando antes de guardar.
+- **Operador de red (2026-10-02):** antes se mandaba el PDF entero del acta a Opus (≈ 51.000 tokens de entrada,
+  ≈ $0,26 por CO) y los PDF de más de ~22 MB daban HTTP 413 (la API acepta 32 MB y el PDF viaja en base64). Ahora
+  `operator_resolver` descarga el acta, saca el texto con el OCR de Drive y se lo pregunta a Sonnet (≈ $0,02,
+  `tipo = operador_texto` en Consumo). El PDF completo con Opus (`tipo = operador`) queda solo de respaldo si el
+  texto no lo trajo (o el OCR falló) y el PDF pesa menos de `LIMITE_BYTES_PDF_COMPLETO` (18 MB); si no, el CO
+  queda "pendiente de OR manual" y la tarjeta lo dice (antes mostraba una tabla vacía sin explicación).
 - **Actas ya leídas:** `acta_cache` guarda lo extraído por URL de acta, así que las que ya se leyeron con Opus no se
   vuelven a leer ni a pagar; solo las nuevas usan Sonnet.
 - **Volver a Opus sin tocar código:** en Vercel define `ACTA_TEXTO_MODELO=claude-opus-5` (y, si quieres,

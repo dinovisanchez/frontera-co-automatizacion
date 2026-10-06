@@ -103,3 +103,18 @@ def test_el_endpoint_rechaza_una_fecha_mal_escrita():
     resp = app.test_client().get("/api/consumo_resumen?desde=ayer")
 
     assert resp.status_code == 400
+
+
+def test_pregunta_del_operador_por_texto_queda_etiquetada_y_con_precio_de_sonnet(monkeypatch):
+    sheets = SheetsFalso(HojaFalsa())
+    llm = _llm_con_registro(monkeypatch, sheets)
+    monkeypatch.setattr(
+        llm_client.requests, "post",
+        lambda *a, **k: Resp(200, {"content": [{"type": "text", "text": '{"or": "AFINIA"}'}], "usage": {"input_tokens": 8000, "output_tokens": 20}}),
+    )
+
+    assert or_extractor.extraer_or_desde_texto("OR: AFINIA", llm, co="CO0100002908") == "AFINIA"
+
+    fila = _filas(sheets)[0]
+    assert (fila["co"], fila["tipo"], fila["modelo"]) == ("CO0100002908", "operador_texto", "claude-sonnet-5-5")
+    assert fila["costo_usd"] == pytest.approx((8000 * 2 + 20 * 10) / 1e6)  # ≈ $0,016, contra ≈ $0,26 del PDF con Opus

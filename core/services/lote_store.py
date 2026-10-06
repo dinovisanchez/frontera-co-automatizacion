@@ -145,14 +145,14 @@ class LoteStore:
             con_reintento_sheets(hoja.update, f"A{fila_inicio}:{col_fin}{fila_fin}", filas_nuevas)
         return {"lote_id": lote_id, "total": len(filas_nuevas), "descartados": len(vistos) - len(filas_nuevas)}
 
-    def _calcular_opex(self, f: FilaLote, llm, metabase, resultado: dict) -> None:
+    def _calcular_opex(self, f: FilaLote, llm, metabase, resultado: dict, drive_cfg=None) -> None:
         """OPEX del lote (Dinovi, 2026-09-24): "que cumpla la misma función que la primera
         pestaña, solo que masivo" — automático, sin exclusiones manuales de fila (no hay quién
         las marque en un lote de 400), es_instalacion_nueva=False (estos CO son cambios de
         equipo por Art.19, no instalaciones nuevas) y secciones = las que ya detectó el
         dictamen (igual que si nadie hubiera excluido nada en la pantalla individual)."""
         try:
-            or_res = resolver_operador_red(self._sheets, metabase, llm, f.co)
+            or_res = resolver_operador_red(self._sheets, metabase, llm, f.co, drive_cfg)
             if or_res.fuente == FUENTE_PENDIENTE_MANUAL:
                 f.opex_alerta = or_res.motivo
                 return
@@ -208,7 +208,7 @@ class LoteStore:
                 resultado = analizar_alcance_provisional(self._sheets, llm, f.co, dictamen, acta_resultado, filas_metabase_co)
                 f.resultado = resultado
                 f.comparacion = comparar_propuesta_vs_hoja(resultado["propuesta"], f.datos_hoja, f.fuente)
-                self._calcular_opex(f, llm, metabase, resultado)
+                self._calcular_opex(f, llm, metabase, resultado, drive_cfg)
                 f.estado = ESTADO_COMPLETO
                 procesados += 1
         except Exception as e:  # noqa: BLE001 — un CO con error no debe tumbar el resto del lote

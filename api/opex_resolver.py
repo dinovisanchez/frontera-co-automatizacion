@@ -59,7 +59,7 @@ def opex_resolver():
     if or_manual:
         or_raw, fuente_or = or_manual, "manual"
     else:
-        resultado_or = resolver_operador_red(deps.sheets, deps.metabase, deps.llm, co)
+        resultado_or = resolver_operador_red(deps.sheets, deps.metabase, deps.llm, co, deps.drive_cfg)
         if resultado_or.fuente == FUENTE_PENDIENTE_MANUAL:
             return jsonify({"co": co, "pendiente_operador": True, "motivo": resultado_or.motivo}), 202
         or_raw, fuente_or = resultado_or.or_raw, resultado_or.fuente
