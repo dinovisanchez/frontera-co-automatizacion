@@ -16,27 +16,50 @@ DESCARGO = 8_000_000
 DESCARGO_ENEL = 12_000_000
 
 
+FORMULA_K = "=IFERROR(VLOOKUP(B2;Z:AA;2;0);0)"
+
+
 class HojaFalsa:
     url = "https://docs.google.com/spreadsheets/d/x/edit#gid=1"
 
-    def __init__(self, col_a: list, col_h: list, col_i: list | None = None):
+    def __init__(self, col_a: list, col_h: list, col_i: list | None = None, col_k: list | None = None, ciudades: dict | None = None):
         self.col_a, self.col_h = col_a, col_h
         # Por defecto la columna I tiene su fórmula en todas las filas de datos.
         self.col_i = col_i if col_i is not None else ["Descargo"] + [FORMULA_I] * (len(col_a) - 1)
+        # K (Desplazamiento) también, salvo que el test diga otra cosa.
+        self.col_k = col_k if col_k is not None else ["Desplazamiento"] + [FORMULA_K] * (len(col_a) - 1)
+        # La "fórmula" de B: la ciudad que la hoja calcula para el CO escrito en A de esa fila (por defecto Bogotá).
+        self.ciudades = ciudades if ciudades is not None else {}
+        self._co_en_fila: dict[int, str] = {}
         self.escrituras: list[tuple[str, list]] = []  # (rango, valores)
 
     def col_values(self, col, value_render_option=None):
-        assert col in (1, 8, 9)
-        if col in (8, 9):
+        assert col in (1, 8, 9, 11)
+        if col in (8, 9, 11):
             assert value_render_option == "FORMULA"  # hay que ver la fórmula, no el valor calculado
-        return list({1: self.col_a, 8: self.col_h, 9: self.col_i}[col])
+        return list({1: self.col_a, 8: self.col_h, 9: self.col_i, 11: self.col_k}[col])
+
+    def _registrar(self, rango, valores):
+        self.escrituras.append((rango, valores))
+        if rango.startswith("A") and ":" not in rango:  # aprende qué CO quedó en cada fila para "calcular" B
+            self._co_en_fila[int(rango[1:])] = valores[0][0]
 
     def update(self, *args, range_name=None, **kwargs):
         if isinstance(args[0], str):  # estilo viejo: update("A5:E5", valores)
             rango, valores = args[0], args[1]
         else:
             valores, rango = args[0], range_name
-        self.escrituras.append((rango, valores))
+        self._registrar(rango, valores)
+
+    def batch_update(self, data, **kwargs):
+        for d in data:
+            self._registrar(d["range"], d["values"])
+
+    def get(self, rango):
+        assert rango.startswith("B")
+        co = self._co_en_fila.get(int(rango[1:]))
+        ciudad = self.ciudades.get(co, "Bogotá")
+        return [[ciudad]] if ciudad is not None else []
 
 
 class SheetsFalso:
@@ -63,6 +86,10 @@ def _hoja_con_un_co_previo(h_ultima_fila=FORMULA_H, i_ultima_fila=FORMULA_I):
 
 def _escrituras_col(hoja, letra):
     return [(r, v) for r, v in hoja.escrituras if r.startswith(letra) and not r.startswith("A")]
+
+
+def _escrituras_rango(hoja, letra):
+    return [(r, v) for r, v in hoja.escrituras if r.startswith(letra)]
 
 
 def _restauraciones(sheets, col_inicio):
@@ -221,3 +248,113 @@ def test_celda_vacia_en_la_fila_origen_no_se_toca():
 
     assert _escrituras_col(hoja, "H") == [] and _escrituras_col(hoja, "I") == []
     assert [c["col_inicio"] for c in sheets.copias] == [0]
+
+
+# ------------------------------------------------------------------ Desplazamiento (K) — un precio por ciudad
+
+def test_b_ya_no_se_escribe_la_hoja_la_calcula_con_su_formula():
+    hoja = _hoja_con_un_co_previo()
+
+    guardar_filas_opex(SheetsFalso(hoja), "CO0100002908", "AFINIA", _filas(INSTALACION))
+
+    assert _escrituras_rango(hoja, "B") == []  # antes se escribía "" y se borraba la fórmula de la ciudad
+    assert _escrituras_rango(hoja, "A") == [("A4", [["CO0100002908"]])]
+    assert _escrituras_rango(hoja, "C") == [("C4:E4", [["AFINIA", INSTALACION, 1]])]
+
+
+def test_el_primer_co_de_una_ciudad_deja_el_precio_en_su_primera_fila_y_el_resto_de_filas_en_blanco():
+    hoja = _hoja_con_un_co_previo()
+    sheets = SheetsFalso(hoja)
+
+    res = guardar_filas_opex(sheets, "CO0100002908", "AFINIA", _filas(INSTALACION, "Cambio de DPS (unidad)", "Otra maniobra"))
+
+    # La fila 4 conserva la fórmula heredada; la 5 se limpia y la 6 (que se copia de la 5) ya hereda K vacía.
+    assert _escrituras_rango(hoja, "K") == [("K5", [[""]])]
+    assert res["desplazamiento"] == {"ciudad": "Bogotá", "aplicado": True, "fila": 4, "alerta": None}
+    assert res["ciudades_con_desplazamiento"] == ["bogota"]
+
+
+def test_un_co_de_una_ciudad_ya_cobrada_en_el_mismo_guardado_queda_sin_precio():
+    # El CO anterior de esta tanda (Bogotá) terminó con K vacía en sus filas 4-5: la 5 es la última con datos.
+    hoja = HojaFalsa(
+        col_a=["CO", "CO0000000001", "CO0000000001", "CO0100000001", "CO0100000001"], col_h=["Carro canasta"] + [FORMULA_H] * 4,
+        col_k=["Desplazamiento", FORMULA_K, FORMULA_K, FORMULA_K, ""],
+    )
+    sheets = SheetsFalso(hoja)
+
+    res = guardar_filas_opex(sheets, "CO0100000002", "AFINIA", _filas(INSTALACION, "Cambio de DPS (unidad)"), ciudades_con_desplazamiento=["bogota"])
+
+    assert res["desplazamiento"] == {"ciudad": "Bogotá", "aplicado": False, "fila": None, "alerta": None}
+    assert _escrituras_rango(hoja, "K") == []  # la fila 5 ya tenía K vacía y se copia hacia abajo: no hay nada que borrar
+    assert _restauraciones(sheets, 10) == []   # y tampoco se recupera la fórmula
+    assert res["ciudades_con_desplazamiento"] == ["bogota"]
+
+
+def test_una_ciudad_ya_cobrada_borra_la_k_heredada_de_la_fila_anterior():
+    hoja = _hoja_con_un_co_previo()  # la última fila con datos (3) SÍ tiene fórmula en K
+
+    res = guardar_filas_opex(SheetsFalso(hoja), "CO0100002908", "AFINIA", _filas(INSTALACION, "Otra maniobra"), ciudades_con_desplazamiento=["BOGOTA "])
+
+    assert res["desplazamiento"]["aplicado"] is False and res["desplazamiento"]["fila"] is None
+    assert _escrituras_rango(hoja, "K") == [("K4", [[""]])]  # solo la primera fila (la 5 hereda la K vacía de la 4)
+
+
+def test_una_ciudad_nueva_recupera_la_formula_de_k_si_la_fila_anterior_quedo_en_blanco():
+    hoja = HojaFalsa(
+        col_a=["CO", "CO0000000001", "CO0100000001"], col_h=["Carro canasta"] + [FORMULA_H] * 2,
+        col_k=["Desplazamiento", FORMULA_K, ""], ciudades={"CO0100000002": "Medellín"},
+    )
+    sheets = SheetsFalso(hoja)
+
+    res = guardar_filas_opex(sheets, "CO0100000002", "EPM", _filas(INSTALACION), ciudades_con_desplazamiento=["bogota"])
+
+    assert res["desplazamiento"] == {"ciudad": "Medellín", "aplicado": True, "fila": 4, "alerta": None}
+    assert {"origen": 2, "destino": 4, "num_columnas": 11, "col_inicio": 10} in sheets.copias  # solo la columna K
+    assert res["ciudades_con_desplazamiento"] == ["bogota", "medellin"]
+
+
+def test_la_ciudad_se_compara_sin_importar_mayusculas_acentos_ni_espacios():
+    from core.services.guardar_opex import clave_ciudad
+
+    assert clave_ciudad("  BOGOTÁ  D.C.") == clave_ciudad("bogota d.c.") == "bogota d.c."
+    assert clave_ciudad("#N/A") == "" and clave_ciudad(None) == "" and clave_ciudad("   ") == ""
+
+
+def test_si_la_hoja_no_da_la_ciudad_no_se_toca_k_y_se_avisa():
+    for ciudad in (None, "#N/A"):
+        hoja = _hoja_con_un_co_previo()
+        hoja.ciudades = {"CO0100002908": ciudad}
+
+        res = guardar_filas_opex(SheetsFalso(hoja), "CO0100002908", "AFINIA", _filas(INSTALACION, "Otra maniobra"))
+
+        assert _escrituras_rango(hoja, "K") == [], ciudad
+        assert res["desplazamiento"]["aplicado"] is None and "ciudad" in res["desplazamiento"]["alerta"]
+        assert res["ciudades_con_desplazamiento"] == []
+
+
+def test_si_k_aun_no_tiene_formulas_no_se_hace_nada_con_el_desplazamiento():
+    hoja = HojaFalsa(col_a=["CO", "CO0000000001"], col_h=["Carro canasta", FORMULA_H], col_k=["Desplazamiento", ""])
+    sheets = SheetsFalso(hoja)
+
+    res = guardar_filas_opex(sheets, "CO0100002908", "AFINIA", _filas(INSTALACION, "Otra maniobra"))
+
+    assert res["desplazamiento"] is None and _escrituras_rango(hoja, "K") == []
+    assert all(c["col_inicio"] != 10 for c in sheets.copias)
+
+
+def test_el_endpoint_pasa_las_ciudades_ya_cobradas_y_devuelve_la_lista_actualizada(monkeypatch):
+    from api import guardar_opex as api_guardar
+    from api.index import app
+
+    hoja = _hoja_con_un_co_previo()
+    deps = type("Deps", (), {"sheets": SheetsFalso(hoja)})()
+    monkeypatch.setattr(api_guardar, "construir_dependencias", lambda requiere_metabase=False: deps)
+
+    resp = app.test_client().post("/api/guardar_opex", json={
+        "co": "CO0100002908", "operador": "AFINIA", "filas": [{"maniobra": INSTALACION, "cantidad": 1}],
+        "ciudades_con_desplazamiento": ["medellin", 5, None],  # lo que no sea texto se ignora
+    })
+
+    cuerpo = resp.get_json()
+    assert resp.status_code == 200
+    assert cuerpo["desplazamiento"]["aplicado"] is True and cuerpo["ciudadesConDesplazamiento"] == ["bogota", "medellin"]

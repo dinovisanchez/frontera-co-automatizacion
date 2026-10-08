@@ -8,6 +8,11 @@ El costo lo calcula la propia hoja (fórmulas) — no se manda ni se escribe.
 esos valores), una sola vez por CO: columna H (Carro canasta) en la PRIMERA "Montaje TCs/TPs MT …
 exterior", y columna I (Descargo) en la PRIMERA "Montaje TCs/TPs MT" (interior o exterior; el
 valor depende del OR). La respuesta trae "carroCanasta" y "descargo": {"fila", "maniobra", "valor"} o null.
+
+Desplazamiento (columna K, Dinovi 2026-10-08): la hoja pone el precio según la ciudad de la columna B; entre los
+CO que se guardan juntos solo se deja UNO por ciudad. Como cada CO es una petición, el cliente manda las ciudades
+que ya cobraron ("ciudades_con_desplazamiento", opcional) y recibe la lista actualizada en "ciudadesConDesplazamiento";
+"desplazamiento" = {"ciudad", "aplicado", "fila", "alerta"} (o null si la hoja aún no tiene fórmula en K).
 """
 
 from flask import Blueprint, jsonify, request
@@ -33,10 +38,17 @@ def guardar_opex():
     if not filas:
         return jsonify({"error": "No hay ninguna fila con maniobra para guardar."}), 400
 
+    ciudades = body.get("ciudades_con_desplazamiento")
+    ciudades = [c for c in ciudades if isinstance(c, str)] if isinstance(ciudades, list) else []
+
     deps = construir_dependencias(requiere_metabase=False)
     try:
-        resultado = guardar_filas_opex(deps.sheets, co, operador, filas)
+        resultado = guardar_filas_opex(deps.sheets, co, operador, filas, ciudades_con_desplazamiento=ciudades)
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 500
 
-    return jsonify({"guardadas": resultado["guardadas"], "hoja_url": resultado["hoja_url"], "carroCanasta": resultado["carro_canasta"], "descargo": resultado["descargo"]})
+    return jsonify({
+        "guardadas": resultado["guardadas"], "hoja_url": resultado["hoja_url"],
+        "carroCanasta": resultado["carro_canasta"], "descargo": resultado["descargo"],
+        "desplazamiento": resultado["desplazamiento"], "ciudadesConDesplazamiento": resultado["ciudades_con_desplazamiento"],
+    })

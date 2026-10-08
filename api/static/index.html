@@ -247,6 +247,15 @@
 
   <script>
     // ---------- Utilidades básicas ----------
+    /** Frase sobre el Desplazamiento (columna K de OPEX) tras guardar un CO: el precio de una ciudad se deja UNA vez. */
+    function textoDesplazamiento(d) {
+      if (!d) return '';
+      if (d.alerta) return ' · ⚠ ' + escapeHtml(d.alerta);
+      if (d.aplicado === false) return ' · Desplazamiento de ' + escapeHtml(d.ciudad || '?') + ' ya cobrado en otro CO (K vacía)';
+      if (d.aplicado === true) return ' · Desplazamiento de ' + escapeHtml(d.ciudad || '?') + (d.fila ? ' en la fila ' + d.fila : '');
+      return '';
+    }
+
     function escapeHtml(s) {
       return (s || '').toString().replace(/[&<>"']/g, function (c) {
         return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -1045,6 +1054,7 @@
         d.innerHTML = '<div class="line ok">✓ Guardado (' + r.guardadas.length + ' fila(s))' +
           (r.carroCanasta ? ' · Carro canasta ' + formatoPesos(r.carroCanasta.valor) + ' en la fila ' + r.carroCanasta.fila : '') +
           (r.descargo ? ' · Descargo ' + formatoPesos(r.descargo.valor) + ' en la fila ' + r.descargo.fila : '') +
+          textoDesplazamiento(r.desplazamiento) +
           ' — <a href="' + r.hoja_url + '" target="_blank">ver hoja OPEX</a></div>';
       }
       destinoEl.__opexEstado = { opex: opex, filasIncluidas: filasIncluidas, marcarGuardado: mostrarGuardado };
@@ -1243,6 +1253,7 @@
         var destinoResult = document.getElementById('resultGuardarLote');
         destinoResult.innerHTML = '';
         var ok = [], fallidos = [];
+        var ciudadesDesplazamientoSeleccion = [];  // ciudades cuyo Desplazamiento ya se cobró en este guardado (K: un solo precio por ciudad)
         for (var i = 0; i < seleccionados.length; i++) {
           var co = seleccionados[i];
           var f = filasPorCo[co];
@@ -1265,7 +1276,8 @@
           }
           if (f.opex && f.opex.filas && f.opex.filas.length) {
             try {
-              await fetchJSON('POST', '/api/guardar_opex', { co: co, operador: f.opex.operador, filas: f.opex.filas.map(function (fila) { return { maniobra: fila.maniobra, cantidad: fila.cantidad }; }) });
+              var rOpex = await fetchJSON('POST', '/api/guardar_opex', { co: co, operador: f.opex.operador, ciudades_con_desplazamiento: ciudadesDesplazamientoSeleccion, filas: f.opex.filas.map(function (fila) { return { maniobra: fila.maniobra, cantidad: fila.cantidad }; }) });
+              ciudadesDesplazamientoSeleccion = rOpex.ciudadesConDesplazamiento || ciudadesDesplazamientoSeleccion;
               ok.push(co + ' (Equipos + OPEX)');
             } catch (e) {
               ok.push(co + ' (solo Equipos — OPEX falló: ' + e.message + ')');
@@ -1457,6 +1469,7 @@
     }
 
     var cosEquiposMostrados = [];
+    var ciudadesDesplazamientoEquipos = [];  // ciudades cuyo Desplazamiento ya se cobró entre los CO guardados de esta lista (K: un solo precio por ciudad); se reinicia al cargar otra lista
 
     /** Pinta solo los CO que coinciden con "Filtrar por CO" (todos si está vacío) y actualiza el contador. */
     function aplicarFiltroOpexEquipos() {
@@ -1471,6 +1484,7 @@
       document.getElementById('resumenEquipos').textContent = texto;
 
       cosEquiposMostrados = filtrados;
+      ciudadesDesplazamientoEquipos = [];
       document.getElementById('estadoLoteEquipos').innerHTML = '';
       document.getElementById('barraLoteEquipos').style.display = filtrados.length ? '' : 'none';
       pintarListaOpexEquipos(filtrados);
@@ -1569,16 +1583,19 @@
       bloquearPanelEquipos(true);
       setRunning('btnGuardarTodosEquipos', 'spinnerLoteEquipos', true);
       estadoEl.innerHTML = '';
-      var guardados = [], falla = null;
+      var guardados = [], falla = null, sinDesplazamiento = [], alertasDesplazamiento = [];
       try {
         // Uno tras otro (nunca en paralelo): cada guardado escribe en la "siguiente fila en blanco".
         for (var i = 0; i < listos.length; i++) {
           var x = listos[i];
           sp.textContent = 'Guardando ' + (i + 1) + ' de ' + listos.length + ' (' + x.r.co + ')…';
           try {
-            var resp = await fetchJSON('POST', '/api/guardar_opex', { co: x.r.co, operador: x.est.opex.operador, filas: x.filas });
+            var resp = await fetchJSON('POST', '/api/guardar_opex', { co: x.r.co, operador: x.est.opex.operador, ciudades_con_desplazamiento: ciudadesDesplazamientoEquipos, filas: x.filas });
+            ciudadesDesplazamientoEquipos = resp.ciudadesConDesplazamiento || ciudadesDesplazamientoEquipos;
             x.est.marcarGuardado(resp);
             guardados.push(x.r.co);
+            if (resp.desplazamiento && resp.desplazamiento.aplicado === false) sinDesplazamiento.push(x.r.co);
+            if (resp.desplazamiento && resp.desplazamiento.alerta) alertasDesplazamiento.push(x.r.co);
           } catch (e) {
             // Se detiene en el primer error: sigue escribiendo en una hoja real y un fallo suele ser de cuota o permisos.
             falla = x.r.co + ' — ' + ((e && e.message) || e);
@@ -1593,6 +1610,14 @@
       }
 
       var html = guardados.length ? '<div class="line ok">✓ Guardados en OPEX: ' + guardados.length + ' CO (' + escapeHtml(listaCorta(guardados, 15)) + ').</div>' : '';
+      if (sinDesplazamiento.length) {
+        html += '<div class="item">Desplazamiento (columna K): una sola vez por ciudad — ' + sinDesplazamiento.length +
+          ' CO quedaron sin precio por repetir ciudad (' + escapeHtml(listaCorta(sinDesplazamiento, 15)) + ').</div>';
+      }
+      if (alertasDesplazamiento.length) {
+        html += '<div class="item warn">No se pudo leer la ciudad (columna B) de ' + escapeHtml(listaCorta(alertasDesplazamiento, 15)) +
+          ': en esos CO no se evitó repetir el desplazamiento.</div>';
+      }
       if (falla) {
         var pendientesGuardar = listos.length - guardados.length;
         html += '<div class="error-box">Se detuvo en ' + escapeHtml(falla) + '. Revisa la hoja OPEX antes de reintentar ese CO: puede haber quedado a medias. ' +

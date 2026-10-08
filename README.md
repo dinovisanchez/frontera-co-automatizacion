@@ -82,6 +82,22 @@ solo nombran "Montaje TCs/TPs" para aclarar que no lo incluyen. La regla vive en
 `core/services/descargo.py` (comparte el detector de montaje con `carro_canasta.py`). Si el OR no
 se puede normalizar a una de las 8 columnas del tarifario, cuenta como "no ENEL" ($8.000.000).
 
+**Desplazamiento (columna K de la hoja "OPEX")** — Dinovi, 2026-10-08: la hoja calcula sola el precio con una
+fórmula que mira la **ciudad de la columna B** (otra fórmula, según el CO de la columna A). Cuando se guardan
+varios CO juntos, el precio de una ciudad se deja **una sola vez**: el primer CO de esa ciudad lo lleva en su
+**primera fila** y las demás filas —y los demás CO de la misma ciudad— quedan con K vacía. Cómo funciona
+(`core/services/guardar_opex.py`):
+- Ya **no se escribe la columna B** (antes se escribía `""` y se borraba la fórmula de la ciudad); se escribe A y C:E.
+- Tras escribir la primera fila de cada CO se **lee la ciudad que calculó la hoja** y se compara (sin mayúsculas, acentos
+  ni espacios). Si la ciudad ya se cobró, se borra la K de esa fila; si no, queda la fórmula heredada. Si la fila anterior
+  había quedado con K vacía, se **recupera la fórmula** desde la última fila que la tiene (igual que H e I).
+- "Los CO que se guardan juntos" = el botón de guardar todos de "OPEX desde Equipos" (la lista cargada) y el de guardar
+  seleccionados de Comparación Masiva. Como cada CO es una petición, la pantalla va acumulando las ciudades ya cobradas
+  (`ciudades_con_desplazamiento` / `ciudadesConDesplazamiento`). Un guardado individual lleva el precio en su primera fila
+  y no mira lo que ya hay en la hoja.
+- Si la hoja no devuelve la ciudad (B vacía o con error), no se toca K y la pantalla avisa. Si K aún no tiene ninguna
+  fórmula, no se hace nada.
+
 ⚠️ También se corrigió que `sheets_client.py` pedía los valores "tal como se ven" (ej.
 `"$118,750.00"`) en vez del número crudo — eso habría hecho que CADA precio quedara en 0 al
 intentar convertir ese texto a `float`. `leer_todo`/`leer_rango` ahora aceptan
